@@ -1,0 +1,107 @@
+# ==============================================================================
+# Java & Maven Build Artifacts
+# ==============================================================================
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.zip
+*.tar.gz
+*.rar
+
+# Maven local repository & logs
+.mvn/.sh
+.mvn/.cmd
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+buildNumber.properties
+.mvn/timing.properties
+!/.mvn/wrapper/maven-wrapper.jar
+
+# ==============================================================================
+# Generated Application Outputs & Timetables
+# ==============================================================================
+output/
+output/*
+*.pdf
+!sample-data/**
+
+# ==============================================================================
+# Exclude Raw Institutional / Sensitive Files
+# ==============================================================================
+*allotment*.xlsx
+!sample-data/*.xlsx
+*free teachers*.xlsx
+!sample-data/*.xlsx
+*timetable*.xlsx
+!sample-data/*.xlsx
+constraints.csv
+!sample-data/sample-constraints.csv
+*.docx
+*.pptx
+*.xlsx.tmp
+
+# ==============================================================================
+# IDE & Editor Specific Files
+# ==============================================================================
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings/
+.springBeans
+.recommenders
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbproject/genfiles.properties
+
+# ==============================================================================
+# OS-Specific & Temporary Files
+# ==============================================================================
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+ehthumbs.db
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+*.log
+*.crash
+
+# ==============================================================================
+# Secrets & Local Overrides
+# ==============================================================================
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials.json
+secrets.yaml
+local-config.yaml
