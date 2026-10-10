@@ -16,15 +16,33 @@ public class Main {
 
     public static void main(String[] args) {
         boolean isCliMode = false;
+        boolean isServerMode = false;
+        int serverPort = 8080;
         String configPath = "config/school-config.yaml";
 
-        for (String arg : args) {
-            if ("--cli".equalsIgnoreCase(arg) || "--headless".equalsIgnoreCase(arg) || "--batch".equalsIgnoreCase(arg)) {
+        for (int i = 0; i < args.length; i++) {
+            String arg = args[i];
+            if ("--server".equalsIgnoreCase(arg) || "--daemon".equalsIgnoreCase(arg)) {
+                isServerMode = true;
+                if (i + 1 < args.length && args[i + 1].matches("\\d+")) {
+                    serverPort = Integer.parseInt(args[++i]);
+                }
+            } else if (arg.startsWith("--server=")) {
+                isServerMode = true;
+                serverPort = Integer.parseInt(arg.substring("--server=".length()));
+            } else if ("--port".equalsIgnoreCase(arg) && i + 1 < args.length && args[i + 1].matches("\\d+")) {
+                serverPort = Integer.parseInt(args[++i]);
+            } else if ("--cli".equalsIgnoreCase(arg) || "--headless".equalsIgnoreCase(arg) || "--batch".equalsIgnoreCase(arg)) {
                 isCliMode = true;
             } else if (arg.endsWith(".yaml") || arg.endsWith(".yml")) {
                 configPath = arg;
                 isCliMode = true;
             }
+        }
+
+        if (isServerMode) {
+            runServer(serverPort);
+            return;
         }
 
         if (GraphicsEnvironment.isHeadless()) {
@@ -44,6 +62,36 @@ public class Main {
                     runCli(finalConfigPath);
                 }
             });
+        }
+    }
+
+    public static void runServer(int port) {
+        System.out.println("================================================================================");
+        System.out.println(" SIES Timetable Generator — HTTP API Backend Daemon");
+        System.out.println("================================================================================");
+        try {
+            com.sies.timetable.server.TimetableHttpServer server = new com.sies.timetable.server.TimetableHttpServer(port);
+            server.start();
+
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                System.out.println("\n[SERVER] Shutting down HTTP API server...");
+                server.stop(0);
+            }));
+
+            System.out.println("✓ Server bound strictly to loopback: " + server.getBaseUrl());
+            System.out.println("✓ Ready for React/Tauri desktop frontend requests.");
+            System.out.println("Press Ctrl+C or send POST /api/admin/shutdown to stop.\n");
+
+            // Keep alive until stopped or interrupted
+            server.awaitTermination();
+            System.out.println("[SERVER] Daemon terminated gracefully.");
+        } catch (InterruptedException e) {
+            System.out.println("[SERVER] Daemon interrupted. Exiting.");
+            Thread.currentThread().interrupt();
+        } catch (Exception e) {
+            System.err.println("[SERVER ERROR] Failed to start HTTP API daemon: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
         }
     }
 

@@ -1,0 +1,592 @@
+/* Timetable Studio Grid & Solver Interface Styling */
+
+.studio-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 1500px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* =========================================================================
+   Studio Header & Toolbar
+   ========================================================================= */
+.studio-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--surface-panel);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  padding: 0.85rem 1.25rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.studio-toolbar__left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.view-mode-toggle {
+  display: flex;
+  background-color: var(--color-obsidian-elevated);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  padding: 2px;
+}
+
+.view-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-ivory-dim);
+  background: transparent;
+  transition: all var(--transition-fast);
+}
+
+.view-mode-btn:hover {
+  color: var(--color-ivory);
+}
+
+.view-mode-btn.is-active {
+  background-color: var(--color-terracotta);
+  color: var(--color-ivory);
+  box-shadow: 0 1px 4px var(--color-terracotta-glow);
+}
+
+.entity-selector-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.selector-label {
+  font-size: var(--text-xs);
+  color: var(--color-ivory-dim);
+  font-weight: 600;
+}
+
+.studio-select {
+  background-color: var(--color-obsidian-elevated);
+  border: 1px solid var(--surface-border);
+  color: var(--color-gold-light);
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  min-width: 140px;
+}
+
+.studio-select:focus {
+  border-color: var(--color-gold);
+}
+
+.studio-toolbar__right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+/* =========================================================================
+   Live Solver Progress Banner
+   ========================================================================= */
+.solver-progress-banner {
+  background: linear-gradient(135deg, rgba(150, 63, 43, 0.25), rgba(101, 30, 37, 0.3));
+  border: 1px solid var(--color-gold-dark);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  box-shadow: var(--shadow-md);
+}
+
+.solver-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.solver-progress-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-ivory);
+}
+
+.solver-progress-meta {
+  font-size: var(--text-xs);
+  color: var(--color-gold);
+  font-family: var(--font-mono);
+}
+
+.solver-progress-track {
+  height: 8px;
+  background-color: var(--color-obsidian-elevated);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.solver-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-terracotta), var(--color-gold));
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.solver-progress-message {
+  font-size: var(--text-xs);
+  color: var(--color-ivory-dim);
+  display: flex;
+  justify-content: space-between;
+}
+
+/* =========================================================================
+   Timetable Grid Table & Cells
+   ========================================================================= */
+.grid-container-card {
+  background-color: var(--surface-panel);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+}
+
+.grid-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--surface-border);
+  background-color: var(--surface-card);
+}
+
+.grid-title-cluster h2 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 700;
+  color: var(--color-ivory);
+}
+
+.grid-title-cluster p {
+  margin: 0.2rem 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-ivory-dim);
+}
+
+.grid-table-wrapper {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 280px);
+}
+
+.timetable-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+  font-size: var(--text-xs);
+  min-width: 900px;
+}
+
+.timetable-table th {
+  background-color: var(--color-obsidian-elevated);
+  color: var(--color-ivory-dim);
+  font-weight: 700;
+  padding: 0.65rem 0.5rem;
+  border: 1px solid var(--surface-border);
+  white-space: pre-line;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+
+.timetable-table th.th-day {
+  width: 100px;
+  background-color: var(--color-obsidian-card);
+  color: var(--color-gold);
+}
+
+.timetable-table th.th-recess {
+  background-color: rgba(71, 135, 119, 0.25);
+  color: var(--color-jade-light);
+  width: 75px;
+}
+
+.timetable-table td {
+  border: 1px solid var(--surface-border);
+  padding: 0.45rem;
+  height: 64px;
+  vertical-align: middle;
+}
+
+.timetable-table td.td-day-label {
+  background-color: var(--color-obsidian-elevated);
+  font-weight: 700;
+  color: var(--color-gold-light);
+  font-size: var(--text-xs);
+  width: 100px;
+}
+
+/* Timetable Cell Design */
+.timetable-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  padding: 0.35rem 0.45rem;
+  border-radius: var(--radius-sm);
+  line-height: 1.2;
+  transition: all var(--transition-fast);
+  cursor: default;
+}
+
+.timetable-cell:hover {
+  transform: scale(1.02);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.timetable-cell.is-highlighted {
+  outline: 2px solid var(--color-gold) !important;
+  box-shadow: var(--shadow-glow-gold);
+  animation: pulseHighlight 1s infinite alternate;
+}
+
+@keyframes pulseHighlight {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.04); }
+}
+
+.cell-main {
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: -0.01em;
+}
+
+.cell-sub {
+  font-size: 0.65rem;
+  opacity: 0.85;
+  margin-top: 0.15rem;
+  font-family: var(--font-mono);
+}
+
+/* Category Colors */
+.cell--core {
+  background-color: rgba(150, 63, 43, 0.28);
+  border: 1px solid rgba(150, 63, 43, 0.6);
+  color: var(--color-ivory);
+}
+
+.cell--activity {
+  background-color: rgba(71, 135, 119, 0.25);
+  border: 1px solid rgba(71, 135, 119, 0.6);
+  color: var(--color-jade-light);
+}
+
+.cell--special {
+  background-color: rgba(214, 180, 119, 0.22);
+  border: 1px solid rgba(214, 180, 119, 0.5);
+  color: var(--color-gold-light);
+}
+
+.cell--lab {
+  background-color: rgba(101, 30, 37, 0.3);
+  border: 1px solid rgba(101, 30, 37, 0.7);
+  color: #FFA2AC;
+}
+
+.cell--free {
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  color: var(--color-ivory-subtle);
+}
+
+.cell--recess {
+  background-color: rgba(71, 135, 119, 0.18);
+  border: 1px solid rgba(71, 135, 119, 0.4);
+  color: var(--color-jade-light);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  font-size: 0.7rem;
+}
+
+/* =========================================================================
+   Diagnostics & Violations Drawer / Section
+   ========================================================================= */
+.diagnostics-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.diagnostics-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.diag-stat-card {
+  background-color: var(--surface-panel);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+}
+
+.diag-stat-title {
+  font-size: var(--text-xs);
+  color: var(--color-ivory-subtle);
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
+}
+
+.diag-stat-val {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--color-ivory);
+}
+
+.diag-violations-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.diag-violations-table th {
+  background-color: var(--color-obsidian-elevated);
+  color: var(--color-ivory-dim);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--surface-border);
+  font-size: 0.7rem;
+}
+
+.diag-violations-table td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: var(--color-ivory-dim);
+}
+
+.diag-row-clickable {
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.diag-row-clickable:hover {
+  background-color: rgba(214, 180, 119, 0.08);
+}
+
+/* =========================================================================
+   Exporters Action Panel
+   ========================================================================= */
+.exporters-action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--surface-panel);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.exporters-action-bar__info strong {
+  font-size: var(--text-sm);
+  color: var(--color-ivory);
+  display: block;
+}
+
+.exporters-action-bar__info p {
+  margin: 0.15rem 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-ivory-subtle);
+}
+
+.export-buttons-group {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.btn-export-link {
+  text-decoration: none;
+  display: inline-flex;
+}
+
+/* =========================================================================
+   Manual Schedule Editing & Swap Controls (Batch 2)
+   ========================================================================= */
+.edit-mode-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(214, 180, 119, 0.15), rgba(150, 63, 43, 0.15));
+  border: 1px solid var(--color-gold);
+  border-radius: var(--radius-md);
+  padding: 0.65rem 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.edit-mode-bar__info {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: var(--text-xs);
+  color: var(--color-ivory);
+}
+
+.edit-mode-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.timetable-cell.is-editable {
+  cursor: pointer !important;
+  transition: all var(--transition-fast);
+}
+
+.timetable-cell.is-editable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.45);
+  filter: brightness(1.15);
+}
+
+.timetable-cell.is-recess-locked {
+  cursor: not-allowed !important;
+  opacity: 0.7;
+}
+
+.timetable-cell.is-source-selected {
+  outline: 2px solid var(--color-gold) !important;
+  outline-offset: -1px;
+  background-color: rgba(214, 180, 119, 0.4) !important;
+  box-shadow: 0 0 12px rgba(214, 180, 119, 0.6) !important;
+  animation: pulseSource 1.2s infinite alternate;
+}
+
+@keyframes pulseSource {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.03); }
+}
+
+.timetable-cell.is-target-selected {
+  outline: 2px solid var(--color-jade-light) !important;
+  outline-offset: -1px;
+  background-color: rgba(71, 135, 119, 0.4) !important;
+  box-shadow: 0 0 12px rgba(71, 135, 119, 0.6) !important;
+}
+
+.swap-preview-card {
+  background-color: var(--surface-panel);
+  border: 1px solid var(--color-gold);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  box-shadow: var(--shadow-md);
+}
+
+.swap-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.swap-preview-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-gold-light);
+}
+
+.swap-slots-comparison {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+  background-color: var(--color-obsidian-card);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+}
+
+.swap-slot-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.swap-slot-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  color: var(--color-ivory-dim);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.swap-slot-time {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-gold);
+}
+
+.swap-slot-detail {
+  font-size: var(--text-xs);
+  color: var(--color-ivory);
+}
+
+.swap-icon-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-terracotta);
+}
+
+.swap-validation-result {
+  border-radius: var(--radius-md);
+  padding: 0.65rem 0.85rem;
+  font-size: var(--text-xs);
+  line-height: 1.4;
+}
+
+.swap-validation-result.is-valid {
+  background-color: rgba(71, 135, 119, 0.15);
+  border: 1px solid var(--color-jade);
+  color: var(--color-jade-light);
+}
+
+.swap-validation-result.is-invalid {
+  background-color: rgba(101, 30, 37, 0.2);
+  border: 1px solid var(--color-crimson);
+  color: #ff9999;
+}
+
+.swap-violation-list {
+  margin: 0.4rem 0 0 1rem;
+  padding: 0;
+  list-style-type: disc;
+}
+
+.swap-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}

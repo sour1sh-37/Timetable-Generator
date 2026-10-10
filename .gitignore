@@ -2,6 +2,7 @@
 # Java & Maven Build Artifacts
 # ==============================================================================
 target/
+**/target/
 *.class
 *.jar
 *.war
@@ -22,6 +23,38 @@ release.properties
 buildNumber.properties
 .mvn/timing.properties
 !/.mvn/wrapper/maven-wrapper.jar
+
+# ==============================================================================
+# Frontend (React / Vite / Node)
+# ==============================================================================
+node_modules/
+**/node_modules/
+frontend/dist/
+dist/
+dist-ssr/
+.vite/
+frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.local
+
+# ==============================================================================
+# Tauri v2 / Rust / Desktop Packaging
+# ==============================================================================
+src-tauri/target/
+src-tauri/gen/schemas/
+src-tauri/resources/
+*.msi
+*-setup.exe
+
+# ==============================================================================
+# Python & Scripts Caches
+# ==============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
 
 # ==============================================================================
 # Generated Application Outputs & Timetables
@@ -66,13 +99,13 @@ out/
 .recommenders
 
 # Visual Studio Code
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 *.code-workspace
 
 # NetBeans
 /nbproject/private/
 /nbbuild/
-/dist/
 /nbproject/genfiles.properties
 
 # ==============================================================================
@@ -102,6 +135,9 @@ ehthumbs.db
 !.env.example
 *.key
 *.pem
+*.pfx
+*.p12
+*.jks
 credentials.json
 secrets.yaml
 local-config.yaml

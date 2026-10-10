@@ -143,6 +143,13 @@ public class ManualTimetableModel {
 
     public List<Day> getDays() { return Collections.unmodifiableList(days); }
 
+    public void setDays(List<Day> newDays) {
+        if (newDays != null && !newDays.isEmpty()) {
+            this.days.clear();
+            this.days.addAll(newDays);
+        }
+    }
+
     public int getDailyPeriod(Day day) {
         return dailyPeriods.getOrDefault(day, 8);
     }
@@ -219,6 +226,10 @@ public class ManualTimetableModel {
                 p.getAllocations().removeIf(a -> a.getSubject().equals(removed));
             }
         }
+    }
+
+    public void clearSubjects() {
+        subjects.clear();
     }
 
     public Subject findSubject(String normalizedName) {

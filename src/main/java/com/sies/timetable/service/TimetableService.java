@@ -10,7 +10,9 @@ import com.sies.timetable.validator.*;
 
 import java.io.File;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 
 /**
@@ -341,6 +343,30 @@ public class TimetableService {
             return new GenerationResult(false, "Timetable generation failed: " + errorMsg,
                     null, null, null, null, null, null, null, null, null, 0.0);
         }
+    }
+
+    public static void exportAll(Schedule schedule, AllocationReconciler.ReconciliationResult recResult,
+                                 ScheduleValidator.ScheduleValidationResult valResult, SchoolConfig config) throws Exception {
+        Path outputDirPath = Paths.get(config.getOutputDir());
+        Files.createDirectories(outputDirPath);
+
+        Path studentCsvPath = outputDirPath.resolve("student_timetable.csv");
+        Path studentCsvTmp = outputDirPath.resolve("student_timetable.csv.tmp");
+        StudentTimetableCsvExporter.export(schedule, recResult, config, studentCsvTmp.toAbsolutePath().toString());
+        Files.move(studentCsvTmp, studentCsvPath, StandardCopyOption.REPLACE_EXISTING);
+
+        Path teacherCsvPath = outputDirPath.resolve("teacher_timetable.csv");
+        Path teacherCsvTmp = outputDirPath.resolve("teacher_timetable.csv.tmp");
+        TeacherTimetableCsvExporter.export(schedule, recResult, config, teacherCsvTmp.toAbsolutePath().toString());
+        Files.move(teacherCsvTmp, teacherCsvPath, StandardCopyOption.REPLACE_EXISTING);
+
+        Path excelPath = outputDirPath.resolve("timetable.xlsx");
+        Path excelTmp = outputDirPath.resolve("timetable.xlsx.tmp");
+        ExcelTimetableExporter.export(schedule, recResult, valResult, config, excelTmp.toAbsolutePath().toString());
+        Files.move(excelTmp, excelPath, StandardCopyOption.REPLACE_EXISTING);
+
+        File pdfDir = new File(config.getOutputDir() + "/pdf");
+        PdfTimetableExporter.exportAllClasses(schedule, recResult, config, pdfDir);
     }
 
     public static TimetableGrid getClassGrid(Schedule schedule, SchoolClass sc, AllocationReconciler.ReconciliationResult recResult, SchoolConfig config) {
