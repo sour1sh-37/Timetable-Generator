@@ -27,6 +27,12 @@ Write-Host ""
 Write-Host "[Step 4/4] Building Tauri Windows Application and NSIS Installer..."
 npx @tauri-apps/cli build
 
+# Step 5: Mirror Installer to Root Directory for Direct Access
+if (Test-Path "src-tauri\target\release\bundle\nsis\SIES Timetable Generator_1.0.0_x64-setup.exe") {
+    Copy-Item "src-tauri\target\release\bundle\nsis\SIES Timetable Generator_1.0.0_x64-setup.exe" "SIES Timetable Generator_1.0.0_x64-setup.exe" -Force
+    Write-Host "   [OK] Staged installer in root project directory: SIES Timetable Generator_1.0.0_x64-setup.exe"
+}
+
 Write-Host ""
 Write-Host "================================================================="
 Write-Host " [SUCCESS] Desktop packaging completed successfully!"

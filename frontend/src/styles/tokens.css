@@ -1,82 +1,227 @@
 /* =========================================================================
-   SIES APJ High School — Design Tokens & Accessible Foundation
-   Brand Identity: Terracotta, Deep Crimson, Warm Ivory, Obsidian, Gold, Jade
+   SIES APJ High School — Design Tokens & Accessible Institutional Foundation
+   Professional Academic Productivity Theme: Crisp, Clean, Usable, Accessible
    Target Viewports: 1280x720 (Standard HD) & 1920x1080 (Full HD Desktop)
    ========================================================================= */
 
 :root {
-  /* 1. Core Brand Colors */
-  --color-terracotta: #963F2B;
-  --color-terracotta-light: #B8533D;
-  --color-terracotta-dark: #782F1F;
-  --color-terracotta-glow: rgba(150, 63, 43, 0.28);
+  /* 1. Neutral Surfaces & Canvas */
+  --bg-canvas: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #ffffff;
+  --bg-subtle: #f1f5f9;
+  --bg-muted: #e2e8f0;
 
-  --color-crimson: #651E25;
-  --color-crimson-light: #842B34;
-  --color-crimson-dark: #431217;
-  --color-crimson-glow: rgba(101, 30, 37, 0.35);
+  /* Semantic surface aliases */
+  --color-surface: #ffffff;
+  --surface-ground: #f8fafc;
+  --surface-panel: #ffffff;
+  --surface-card: #ffffff;
+  --surface-elevated: #ffffff;
+  --surface-border: #e2e8f0;
+  --surface-border-subtle: #f1f5f9;
+  --surface-border-strong: #cbd5e1;
 
-  --color-ivory: #F7F2EA;
-  --color-ivory-dim: #D8D2C5;
-  --color-ivory-subtle: #9E9789;
-
-  --color-obsidian-root: #0F1014;
-  --color-obsidian-base: #17191F;
-  --color-obsidian-card: #1F222A;
-  --color-obsidian-elevated: #282C36;
-  --color-obsidian-overlay: #303542;
-  --color-obsidian-border: #383D4C;
-  --color-obsidian-border-subtle: #2A2E3A;
-
-  --color-gold: #D6B477;
-  --color-gold-light: #ECD29E;
-  --color-gold-dark: #AC8D50;
-  --color-gold-glow: rgba(214, 180, 119, 0.22);
-
-  --color-jade: #478777;
-  --color-jade-light: #61A493;
-  --color-jade-dark: #326356;
-  --color-jade-glow: rgba(71, 135, 119, 0.25);
-
-  /* 2. Semantic Surfaces */
-  --surface-ground: var(--color-obsidian-root);
-  --surface-panel: var(--color-obsidian-base);
-  --surface-card: var(--color-obsidian-card);
-  --surface-elevated: var(--color-obsidian-elevated);
-  --surface-border: var(--color-obsidian-border);
-
-  /* 3. Typography Hierarchy */
+  /* 2. Professional Typography Scale & Colors */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "JetBrains Mono", Consolas, "Fira Code", Menlo, monospace;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-mono: "JetBrains Mono", Consolas, "Segoe UI Mono", Menlo, monospace;
 
-  --text-xs: 0.72rem;
-  --text-sm: 0.82rem;
-  --text-base: 0.92rem;
-  --text-md: 1.05rem;
-  --text-lg: 1.25rem;
-  --text-xl: 1.55rem;
-  --text-2xl: 2rem;
+  --color-text-primary: #0f172a;    /* Slate 900 */
+  --color-text-secondary: #334155;  /* Slate 700 */
+  --color-text-tertiary: #64748b;   /* Slate 500 */
+  --color-text-muted: #94a3b8;      /* Slate 400 */
 
-  /* 4. Radius & Shadows */
-  --radius-sm: 4px;
+  /* Spacing Scale (Generous, Roomy, Clean) */
+  --space-3xs: 0.125rem;  /* 2px */
+  --space-2xs: 0.25rem;   /* 4px */
+  --space-xs: 0.375rem;   /* 6px */
+  --space-sm: 0.5rem;     /* 8px */
+  --space-md: 0.875rem;   /* 14px */
+  --space-lg: 1.25rem;    /* 20px */
+  --space-xl: 1.75rem;    /* 28px */
+  --space-2xl: 2.25rem;   /* 36px */
+  --space-3xl: 3rem;      /* 48px */
+
+  /* Legacy remapped colors to ensure total readability */
+  --color-ivory: #0f172a;
+  --color-ivory-dim: #475569;
+  --color-ivory-subtle: #64748b;
+
+  --color-obsidian-root: #f8fafc;
+  --color-obsidian-base: #ffffff;
+  --color-obsidian-card: #ffffff;
+  --color-obsidian-elevated: #f1f5f9;
+  --color-obsidian-overlay: #e2e8f0;
+  --color-obsidian-border: #e2e8f0;
+  --color-obsidian-border-subtle: #f1f5f9;
+
+  --text-xs: 0.75rem;     /* 12px */
+  --text-sm: 0.875rem;    /* 14px */
+  --text-base: 0.95rem;   /* 15.2px - standard body */
+  --text-md: 1.1rem;      /* 17.6px */
+  --text-lg: 1.3rem;      /* 20.8px */
+  --text-xl: 1.55rem;     /* 24.8px */
+  --text-2xl: 1.95rem;    /* 31.2px */
+
+  /* 3. SIES Institutional Brand Colors */
+  /* Primary Institutional: Deep SIES Burgundy */
+  --color-brand: #8b1e29;
+  --color-brand-hover: #731821;
+  --color-brand-active: #5c1219;
+  --color-brand-subtle: #fdf2f4;
+  --color-brand-border: #f8d7da;
+  --color-brand-text: #ffffff;
+
+  /* Academic Navy */
+  --color-navy: #1e3a8a;
+  --color-navy-hover: #1d4ed8;
+  --color-navy-subtle: #eff6ff;
+  --color-navy-border: #dbeafe;
+
+  /* Terracotta Accent */
+  --color-terracotta: #963f2b;
+  --color-terracotta-light: #b8533d;
+  --color-terracotta-dark: #782f1f;
+  --color-terracotta-subtle: #fff5f3;
+  --color-terracotta-border: #fed7d0;
+
+  /* Institutional Amber / Gold */
+  --color-gold: #b45309;
+  --color-gold-light: #d97706;
+  --color-gold-dark: #92400e;
+  --color-gold-subtle: #fffbeb;
+  --color-gold-border: #fde68a;
+
+  /* Jade / Forest Green (Passed Constraints, Feasible) */
+  --color-jade: #15803d;
+  --color-jade-light: #16a34a;
+  --color-jade-dark: #14532d;
+  --color-jade-subtle: #f0fdf4;
+  --color-jade-border: #bbf7d0;
+
+  /* Crimson / Red (Hard Violations, Danger) */
+  --color-crimson: #b91c1c;
+  --color-crimson-light: #dc2626;
+  --color-crimson-dark: #991b1b;
+  --color-crimson-subtle: #fef2f2;
+  --color-crimson-border: #fecaca;
+
+  /* 4. Radius & Clean Shadows (No Heavy Dark Glows) */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
   --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
   --radius-full: 9999px;
 
-  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.45);
-  --shadow-glow-gold: 0 0 16px var(--color-gold-glow);
-  --shadow-glow-terracotta: 0 0 16px var(--color-terracotta-glow);
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.04);
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.05), 0 0 0 1px rgba(15, 23, 42, 0.03);
+
+  /* Clean focus ring */
+  --focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px var(--color-brand);
 
   /* 5. Transitions */
-  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* =========================================================================
+   Application-Wide Dark Mode Token Overrides
+   Deliberate Charcoal & Slate Surfaces, High-Contrast Accessible Typography
+   ========================================================================= */
+
+[data-theme="dark"] {
+  /* 1. Neutral Surfaces & Canvas */
+  --bg-canvas: #0b0f19;
+  --bg-surface: #131b2e;
+  --bg-surface-elevated: #1e2b46;
+  --bg-subtle: #192338;
+  --bg-muted: #24304c;
+
+  /* Semantic surface aliases */
+  --color-surface: #131b2e;
+  --surface-ground: #0b0f19;
+  --surface-panel: #131b2e;
+  --surface-card: #162035;
+  --surface-elevated: #1e2b46;
+  --surface-border: #243352;
+  --surface-border-subtle: #1a263e;
+  --surface-border-strong: #374b73;
+
+  /* 2. Professional Typography Scale & Colors */
+  --color-text-primary: #f8fafc;    /* Slate 50 */
+  --color-text-secondary: #cbd5e1;  /* Slate 300 */
+  --color-text-tertiary: #94a3b8;   /* Slate 400 */
+  --color-text-muted: #64748b;      /* Slate 500 */
+
+  /* Legacy remapped colors */
+  --color-ivory: #f8fafc;
+  --color-ivory-dim: #cbd5e1;
+  --color-ivory-subtle: #94a3b8;
+
+  --color-obsidian-root: #0b0f19;
+  --color-obsidian-base: #131b2e;
+  --color-obsidian-card: #162035;
+  --color-obsidian-elevated: #1e2b46;
+  --color-obsidian-overlay: #243352;
+  --color-obsidian-border: #243352;
+  --color-obsidian-border-subtle: #1a263e;
+
+  /* 3. SIES Brand & Status Accents for Dark Mode */
+  --color-brand: #e05e6f;
+  --color-brand-hover: #f07080;
+  --color-brand-active: #d04d5e;
+  --color-brand-subtle: rgba(224, 94, 111, 0.16);
+  --color-brand-border: rgba(224, 94, 111, 0.35);
+  --color-brand-text: #ffffff;
+
+  --color-navy: #3b82f6;
+  --color-navy-hover: #60a5fa;
+  --color-navy-subtle: rgba(59, 130, 246, 0.16);
+  --color-navy-border: rgba(59, 130, 246, 0.35);
+
+  --color-terracotta: #ea7a5c;
+  --color-terracotta-light: #f5967d;
+  --color-terracotta-dark: #c2573b;
+  --color-terracotta-subtle: rgba(234, 122, 92, 0.16);
+  --color-terracotta-border: rgba(234, 122, 92, 0.35);
+
+  --color-gold: #f59e0b;
+  --color-gold-light: #fbbf24;
+  --color-gold-dark: #d97706;
+  --color-gold-subtle: rgba(245, 158, 11, 0.16);
+  --color-gold-border: rgba(245, 158, 11, 0.35);
+
+  --color-jade: #22c55e;
+  --color-jade-light: #4ade80;
+  --color-jade-dark: #16a34a;
+  --color-jade-subtle: rgba(34, 197, 94, 0.16);
+  --color-jade-border: rgba(34, 197, 94, 0.35);
+
+  --color-crimson: #f43f5e;
+  --color-crimson-light: #fb7185;
+  --color-crimson-dark: #e11d48;
+  --color-crimson-subtle: rgba(244, 63, 94, 0.16);
+  --color-crimson-border: rgba(244, 63, 94, 0.35);
+
+  /* Dark mode shadows */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.55), 0 4px 6px -4px rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.07);
+
+  /* Clean focus ring for dark surfaces */
+  --focus-ring: 0 0 0 2px #0b0f19, 0 0 0 4px var(--color-brand);
 }
 
 /* Accessible Visible Focus Ring */
 *:focus-visible {
-  outline: 2px solid var(--color-gold) !important;
+  outline: 2px solid var(--color-brand) !important;
   outline-offset: 2px !important;
 }
 
@@ -91,3 +236,15 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Global Semantic Color Utilities */
+.text-brand { color: var(--color-brand) !important; }
+.text-navy { color: var(--color-navy) !important; }
+.text-jade { color: var(--color-jade) !important; }
+.text-crimson { color: var(--color-crimson) !important; }
+.text-terracotta { color: var(--color-terracotta) !important; }
+.text-gold { color: var(--color-gold) !important; }
+.text-primary { color: var(--color-text-primary) !important; }
+.text-secondary { color: var(--color-text-secondary) !important; }
+.text-muted { color: var(--color-text-tertiary) !important; }
+

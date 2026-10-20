@@ -65,9 +65,11 @@ public class TimetableHttpServer {
             new SolverJobStatus("IDLE", null, 0, 7, 0, "Ready to generate", 0.0, false, null)
     );
     private volatile TimetableService.GenerationResult latestResult = null;
+    private volatile boolean scheduleStale = false;
     private volatile Thread runningSolverThread = null;
     private final Object scheduleLock = new Object();
     private final ManualTimetableModel activeModel = new ManualTimetableModel();
+    private File activeConfigFile = new File("config/school-config.yaml");
 
     public TimetableHttpServer(int port) {
         this.requestedPort = port;
@@ -78,12 +80,21 @@ public class TimetableHttpServer {
         this.activeModel.loadDefaultSchoolPreset();
     }
 
+    public void setConfigFile(File file) {
+        this.activeConfigFile = file;
+    }
+
+    public File getConfigFile() {
+        return this.activeConfigFile;
+    }
+
     public ManualTimetableModel getActiveModel() {
         return activeModel;
     }
 
     public void setLatestResultForTesting(TimetableService.GenerationResult result) {
         this.latestResult = result;
+        this.scheduleStale = false;
     }
 
     public synchronized void start() throws IOException {
@@ -128,6 +139,7 @@ public class TimetableHttpServer {
 
     public void setLatestResult(TimetableService.GenerationResult result) {
         this.latestResult = result;
+        this.scheduleStale = false;
     }
 
     public TimetableService.GenerationResult getLatestResult() {
@@ -158,6 +170,7 @@ public class TimetableHttpServer {
         server.createContext("/api/setup/model", new SetupModelHandler());
         server.createContext("/api/setup/reset", new SetupResetHandler());
         server.createContext("/api/setup/validate", new SetupValidateHandler());
+        server.createContext("/api/constraints", new ConstraintsHandler());
 
         // Manual Timetable Editing Endpoints (Batch 2)
         server.createContext("/api/schedule/edit/validate", new ScheduleEditValidateHandler());
@@ -236,6 +249,15 @@ public class TimetableHttpServer {
                     loadedFromFile = true;
                 } else {
                     config = SchoolConfig.createDefault();
+                }
+
+                // Synchronize active parameters if querying default path
+                if ("config/school-config.yaml".equalsIgnoreCase(path)) {
+                    SchoolConfig activeCfg = activeModel.getStructureConfig();
+                    config.setPeriodsPerDay(activeCfg.getPeriodsPerDay());
+                    config.setDailyPeriods(activeCfg.getDailyPeriods());
+                    config.setRecessAfterPeriod(activeCfg.getRecessAfterPeriod());
+                    config.setWeeklyRequiredPeriodsPerClass(activeCfg.getWeeklyRequiredPeriodsPerClass());
                 }
 
                 Map<String, Object> response = new LinkedHashMap<>();
@@ -502,6 +524,7 @@ public class TimetableHttpServer {
                     double finalElapsed = (System.currentTimeMillis() - startTime) / 1000.0;
                     if (result.isSuccess()) {
                         latestResult = result;
+                        scheduleStale = false;
                         currentJob.set(new SolverJobStatus(
                                 "COMPLETED", jobId, 7, 7, 100,
                                 "Timetable generation complete with 0 hard constraint violations!",
@@ -578,50 +601,57 @@ public class TimetableHttpServer {
                 return;
             }
 
-            if (latestResult == null || !latestResult.isSuccess()) {
-                sendJsonResponse(exchange, 200, Map.of(
-                        "status", "SUCCESS",
-                        "available", false,
-                        "message", "No generated timetable is currently available in memory. Trigger generation first."
-                ));
-                return;
+            try {
+                if (latestResult == null || !latestResult.isSuccess()) {
+                    Map<String, Object> resp = new LinkedHashMap<>();
+                    resp.put("status", "SUCCESS");
+                    resp.put("available", false);
+                    resp.put("isStale", scheduleStale);
+                    resp.put("message", "No generated timetable is currently available in memory. Trigger generation first.");
+                    sendJsonResponse(exchange, 200, resp);
+                    return;
+                }
+
+                List<String> classes = (latestResult.reconciliationResult() != null && latestResult.reconciliationResult().classes() != null)
+                        ? latestResult.reconciliationResult().classes().stream().map(SchoolClass::getCanonicalName).toList()
+                        : List.of();
+
+                List<Map<String, Object>> teachers = (latestResult.reconciliationResult() != null && latestResult.reconciliationResult().teachers() != null)
+                        ? latestResult.reconciliationResult().teachers().stream().map(t -> {
+                            Map<String, Object> map = new LinkedHashMap<>();
+                            map.put("code", t.getCode());
+                            map.put("name", t.getFullName());
+                            map.put("totalWorkload", t.getTotalWorkload());
+                            map.put("isFreeTeacher", t.isFreeTeacher());
+                            return map;
+                        }).toList()
+                        : List.of();
+
+                Map<String, Object> response = new LinkedHashMap<>();
+                response.put("status", "SUCCESS");
+                response.put("available", true);
+                response.put("isStale", scheduleStale);
+                response.put("solveTimeSeconds", latestResult.solveTimeSeconds());
+                response.put("qualityIndex", latestResult.validationResult() != null ? latestResult.validationResult().overallQualityIndex() : 100.0);
+                response.put("allHardConstraintsPassed", latestResult.validationResult() != null && latestResult.validationResult().allHardConstraintsPassed());
+                response.put("totalHardViolations", latestResult.validationResult() != null ? latestResult.validationResult().totalHardViolations() : 0);
+                response.put("totalSoftPenalty", latestResult.validationResult() != null ? latestResult.validationResult().totalSoftPenalty() : 0);
+                response.put("totalClasses", classes.size());
+                response.put("classes", classes);
+                response.put("totalTeachers", teachers.size());
+                response.put("teachers", teachers);
+                Map<String, Object> outputFiles = new LinkedHashMap<>();
+                outputFiles.put("excelPath", latestResult.excelFile() != null ? latestResult.excelFile().getPath() : null);
+                outputFiles.put("studentCsvPath", latestResult.studentCsvFile() != null ? latestResult.studentCsvFile().getPath() : null);
+                outputFiles.put("teacherCsvPath", latestResult.teacherCsvFile() != null ? latestResult.teacherCsvFile().getPath() : null);
+                outputFiles.put("pdfDir", latestResult.pdfDir() != null ? latestResult.pdfDir().getPath() : null);
+                response.put("outputFiles", outputFiles);
+
+                sendJsonResponse(exchange, 200, response);
+            } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Error in /api/schedule/summary", e);
+                sendInternalError(exchange, e.getMessage());
             }
-
-            List<String> classes = latestResult.reconciliationResult().classes().stream()
-                    .map(SchoolClass::getCanonicalName)
-                    .toList();
-
-            List<Map<String, Object>> teachers = latestResult.reconciliationResult().teachers().stream()
-                    .map(t -> {
-                        Map<String, Object> map = new LinkedHashMap<>();
-                        map.put("code", t.getCode());
-                        map.put("name", t.getFullName());
-                        map.put("totalWorkload", t.getTotalWorkload());
-                        map.put("isFreeTeacher", t.isFreeTeacher());
-                        return map;
-                    })
-                    .toList();
-
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("status", "SUCCESS");
-            response.put("available", true);
-            response.put("solveTimeSeconds", latestResult.solveTimeSeconds());
-            response.put("qualityIndex", latestResult.validationResult() != null ? latestResult.validationResult().overallQualityIndex() : 100.0);
-            response.put("allHardConstraintsPassed", latestResult.validationResult() != null && latestResult.validationResult().allHardConstraintsPassed());
-            response.put("totalHardViolations", latestResult.validationResult() != null ? latestResult.validationResult().totalHardViolations() : 0);
-            response.put("totalSoftPenalty", latestResult.validationResult() != null ? latestResult.validationResult().totalSoftPenalty() : 0);
-            response.put("totalClasses", classes.size());
-            response.put("classes", classes);
-            response.put("totalTeachers", teachers.size());
-            response.put("teachers", teachers);
-            response.put("outputFiles", Map.of(
-                    "excelPath", latestResult.excelFile() != null ? latestResult.excelFile().getPath() : null,
-                    "studentCsvPath", latestResult.studentCsvFile() != null ? latestResult.studentCsvFile().getPath() : null,
-                    "teacherCsvPath", latestResult.teacherCsvFile() != null ? latestResult.teacherCsvFile().getPath() : null,
-                    "pdfDir", latestResult.pdfDir() != null ? latestResult.pdfDir().getPath() : null
-            ));
-
-            sendJsonResponse(exchange, 200, response);
         }
     }
 
@@ -933,21 +963,270 @@ public class TimetableHttpServer {
         Map<String, Object> bell = new LinkedHashMap<>();
         List<String> days = model.getDays().stream().map(Enum::name).toList();
         bell.put("days", days);
-        bell.put("periodsPerDay", model.getDailyPeriod(Day.MONDAY));
+        bell.put("periodsPerDay", model.getPeriodsPerDay());
         bell.put("weeklyRequiredPeriodsPerClass", model.getWeeklyRequiredPeriodsPerClass());
         bell.put("recessAfterPeriod", model.getRecessAfterPeriod());
         Map<String, Integer> dailyPeriods = new LinkedHashMap<>();
         Map<String, Integer> recessOverrides = new LinkedHashMap<>();
+        Map<String, Boolean> dailyRecessEnabled = new LinkedHashMap<>();
+        Map<String, Integer> dailyRecessDurations = new LinkedHashMap<>();
         for (Day d : model.getDays()) {
             dailyPeriods.put(d.name(), model.getDailyPeriod(d));
-            recessOverrides.put(d.name(), model.getRecessAfterPeriod(d));
+            recessOverrides.put(d.name(), model.getDailyRecessPosition(d));
+            dailyRecessEnabled.put(d.name(), model.isRecessEnabled(d));
+            dailyRecessDurations.put(d.name(), model.getDailyRecessDuration(d));
         }
         bell.put("dailyPeriods", dailyPeriods);
         bell.put("recessOverrides", recessOverrides);
+        bell.put("dailyRecessEnabled", dailyRecessEnabled);
+        bell.put("dailyRecessAfterPeriod", recessOverrides);
+        bell.put("dailyRecessDurations", dailyRecessDurations);
         bell.put("saturdayEnabled", days.contains("SATURDAY"));
+        bell.put("schoolStartTime", model.getSchoolStartTime());
+        bell.put("saturdayStartTime", model.getSaturdayStartTime());
+        bell.put("defaultPeriodDuration", model.getDefaultPeriodDuration());
+        bell.put("passingTime", model.getPassingTime());
+        bell.put("recessDuration", model.getRecessDuration());
+        bell.put("shortBreakEnabled", model.isShortBreakEnabled());
+        bell.put("shortBreakAfterPeriod", model.getShortBreakAfterPeriod());
+        bell.put("shortBreakDuration", model.getShortBreakDuration());
+        bell.put("periodDurationOverrides", model.getPeriodDurationOverrides());
+        bell.put("periodTimeOverrides", model.getPeriodTimeOverrides());
+
+        SchoolConfig tmpCfg = model.buildSchoolConfig();
+        Map<String, Object> computedTimings = new LinkedHashMap<>();
+        computedTimings.put("weekday", tmpCfg.computePeriodTimings(Day.MONDAY));
+        computedTimings.put("saturday", tmpCfg.computePeriodTimings(Day.SATURDAY));
+        computedTimings.put("recessWeekday", tmpCfg.getRecessTiming(Day.MONDAY));
+        computedTimings.put("recessSaturday", tmpCfg.getRecessTiming(Day.SATURDAY));
+        bell.put("computedTimings", computedTimings);
+
         dto.put("bellSchedule", bell);
+        dto.put("constraints", buildConstraintsDto(model));
 
         return dto;
+    }
+
+    private Map<String, Object> buildConstraintsDto(ManualTimetableModel model) {
+        Map<String, Object> root = new LinkedHashMap<>();
+
+        Map<String, Object> hc = new LinkedHashMap<>();
+        addHardConstraintInfo(hc, "H1", "Class Teacher First Period Allocation",
+                "Prioritizes assigning class teachers to their designated class during the first morning instructional period (Period 1).",
+                false, model.isHardConstraintEnabled("H1"), null);
+
+        Map<String, Object> h2Params = new LinkedHashMap<>();
+        h2Params.put("maxContinuousLectures", model.getH2MaxContinuousLectures());
+        addHardConstraintInfo(hc, "H2", "Teacher Continuous Lecture Limit",
+                "Restricts consecutive teaching periods before a recess break to prevent teacher fatigue.",
+                false, model.isHardConstraintEnabled("H2"), h2Params);
+
+        addHardConstraintInfo(hc, "H3", "Class Slot Capacity & Integrity",
+                "Non-negotiable schedule integrity rule: exactly one subject and teacher must occupy every instructional class slot.",
+                true, true, null);
+
+        addHardConstraintInfo(hc, "H4", "No Teacher Double-Booking",
+                "Non-negotiable physical impossibility constraint: no teacher may be assigned to multiple classrooms simultaneously.",
+                true, true, null);
+
+        Map<String, Object> h5Params = new LinkedHashMap<>();
+        h5Params.put("maxConcurrentLabClasses", model.getH5MaxConcurrentLabClasses());
+        addHardConstraintInfo(hc, "H5", "Computer Lab Exclusivity",
+                "Resource bottleneck rule: caps simultaneous computer sessions to the physical capacity of the school lab.",
+                false, model.isHardConstraintEnabled("H5"), h5Params);
+
+        Map<String, Object> h6Params = new LinkedHashMap<>();
+        h6Params.put("prohibitedPeriod", model.getH6ProhibitedPeriod());
+        addHardConstraintInfo(hc, "H6", "Physical Education Period Prohibition",
+                "Protective scheduling rule: prevents strenuous outdoor physical education during the specified school period.",
+                false, model.isHardConstraintEnabled("H6"), h6Params);
+
+        addHardConstraintInfo(hc, "H7", "Physical Education Post-Recess Prohibition",
+                "Health & safety rule: strictly prohibits physical education immediately after the recess/lunch break.",
+                false, model.isHardConstraintEnabled("H7"), null);
+
+        Map<String, Object> h8Params = new LinkedHashMap<>();
+        h8Params.put("maxActivityPeriodsPerDay", model.getH8MaxActivityPeriodsPerDay());
+        addHardConstraintInfo(hc, "H8", "Maximum Daily Activity Periods",
+                "Curriculum balance rule: limits total non-academic activity periods (P.E., Computer, Art, Craft, Music, Library) scheduled per class per day.",
+                false, model.isHardConstraintEnabled("H8"), h8Params);
+
+        addHardConstraintInfo(hc, "H9", "Exact Curriculum Allotment Fulfillment",
+                "Non-negotiable syllabus requirement: every approved teaching allocation must be scheduled exactly to its approved weekly period count.",
+                true, true, null);
+
+        addHardConstraintInfo(hc, "H10", "P.E. & Computer Recess Partition",
+                "Fatigue management rule: partitions physical education and computer lab sessions across recess on days when both occur.",
+                false, model.isHardConstraintEnabled("H10"), null);
+
+        root.put("hardConstraints", hc);
+
+        Map<String, Object> sc = new LinkedHashMap<>();
+        addSoftConstraintInfo(sc, "S1", "Even Weekly Subject Distribution",
+                "Evenly spaces subject lectures across days of the week rather than bunching them consecutively.",
+                model.isSoftConstraintEnabled("S1"), model.getSoftConstraintWeight("S1", 100), 100);
+
+        addSoftConstraintInfo(sc, "S2", "Non-Consecutive Days for 2-Period Subjects",
+                "Separates 2-period subjects by at least one intervening day for optimal pedagogical retention.",
+                model.isSoftConstraintEnabled("S2"), model.getSoftConstraintWeight("S2", 80), 80);
+
+        addSoftConstraintInfo(sc, "S3", "Core Subjects Morning Placement",
+                "Prefers placing core academic subjects (Maths, Science, English) in morning high-attention periods.",
+                model.isSoftConstraintEnabled("S3"), model.getSoftConstraintWeight("S3", 50), 50);
+
+        addSoftConstraintInfo(sc, "S4", "Teacher Daily Workload Balance",
+                "Minimizes variance in daily teaching periods per teacher across the working week.",
+                model.isSoftConstraintEnabled("S4"), model.getSoftConstraintWeight("S4", 40), 40);
+
+        addSoftConstraintInfo(sc, "S5", "Preferred Teacher Time Window",
+                "Minimizes idle waiting gaps and promotes compact instructional blocks in teacher timetables.",
+                model.isSoftConstraintEnabled("S5"), model.getSoftConstraintWeight("S5", 30), 30);
+
+        addSoftConstraintInfo(sc, "S6", "Activity Subject Afternoon Placement",
+                "Prefers scheduling co-curricular arts, music, and craft activities during afternoon sessions.",
+                model.isSoftConstraintEnabled("S6"), model.getSoftConstraintWeight("S6", 20), 20);
+
+        root.put("softConstraints", sc);
+        return root;
+    }
+
+    private void addHardConstraintInfo(Map<String, Object> target, String id, String name, String desc,
+                                       boolean mandatory, boolean enabled, Map<String, Object> extraParams) {
+        Map<String, Object> info = new LinkedHashMap<>();
+        info.put("id", id);
+        info.put("name", name);
+        info.put("description", desc);
+        info.put("mandatory", mandatory);
+        info.put("enabled", mandatory || enabled);
+        if (extraParams != null) {
+            info.putAll(extraParams);
+        }
+        target.put(id, info);
+    }
+
+    private void addSoftConstraintInfo(Map<String, Object> target, String id, String name, String desc,
+                                       boolean enabled, int weight, int defaultWeight) {
+        Map<String, Object> info = new LinkedHashMap<>();
+        info.put("id", id);
+        info.put("name", name);
+        info.put("description", desc);
+        info.put("enabled", enabled);
+        info.put("weight", weight);
+        info.put("defaultWeight", defaultWeight);
+        target.put(id, info);
+    }
+
+    private void applyConstraintsMap(Map<?, ?> cMap, ManualTimetableModel model) {
+        if (cMap == null) return;
+
+        // Hard constraints
+        Object hcObj = cMap.get("hardConstraints");
+        if (hcObj == null) hcObj = cMap.get("hard_constraints");
+        if (hcObj instanceof Map<?, ?> hcMap) {
+            for (Map.Entry<?, ?> e : hcMap.entrySet()) {
+                String id = e.getKey().toString().trim().toUpperCase();
+                if (e.getValue() instanceof Map<?, ?> em) {
+                    if (em.containsKey("enabled")) {
+                        boolean en = Boolean.parseBoolean(em.get("enabled").toString());
+                        model.setHardConstraintEnabled(id, en);
+                    }
+                    if ("H2".equalsIgnoreCase(id) && em.containsKey("maxContinuousLectures")) {
+                        model.setH2MaxContinuousLectures(((Number) em.get("maxContinuousLectures")).intValue());
+                    } else if ("H2".equalsIgnoreCase(id) && em.containsKey("max_continuous_lectures")) {
+                        model.setH2MaxContinuousLectures(((Number) em.get("max_continuous_lectures")).intValue());
+                    }
+                    if ("H5".equalsIgnoreCase(id) && em.containsKey("maxConcurrentLabClasses")) {
+                        model.setH5MaxConcurrentLabClasses(((Number) em.get("maxConcurrentLabClasses")).intValue());
+                    } else if ("H5".equalsIgnoreCase(id) && em.containsKey("max_concurrent_lab_classes")) {
+                        model.setH5MaxConcurrentLabClasses(((Number) em.get("max_concurrent_lab_classes")).intValue());
+                    }
+                    if ("H6".equalsIgnoreCase(id) && em.containsKey("prohibitedPeriod")) {
+                        model.setH6ProhibitedPeriod(((Number) em.get("prohibitedPeriod")).intValue());
+                    } else if ("H6".equalsIgnoreCase(id) && em.containsKey("prohibited_period")) {
+                        model.setH6ProhibitedPeriod(((Number) em.get("prohibited_period")).intValue());
+                    }
+                    if ("H8".equalsIgnoreCase(id) && em.containsKey("maxActivityPeriodsPerDay")) {
+                        model.setH8MaxActivityPeriodsPerDay(((Number) em.get("maxActivityPeriodsPerDay")).intValue());
+                    } else if ("H8".equalsIgnoreCase(id) && em.containsKey("max_activity_periods_per_day")) {
+                        model.setH8MaxActivityPeriodsPerDay(((Number) em.get("max_activity_periods_per_day")).intValue());
+                    }
+                } else if (e.getValue() instanceof Boolean b) {
+                    model.setHardConstraintEnabled(id, b);
+                }
+            }
+        }
+
+        // Soft constraints
+        Object scObj = cMap.get("softConstraints");
+        if (scObj == null) scObj = cMap.get("soft_constraints");
+        if (scObj instanceof Map<?, ?> scMap) {
+            for (Map.Entry<?, ?> e : scMap.entrySet()) {
+                String id = e.getKey().toString().trim().toUpperCase();
+                if (e.getValue() instanceof Map<?, ?> em) {
+                    if (em.containsKey("enabled")) {
+                        model.setSoftConstraintEnabled(id, Boolean.parseBoolean(em.get("enabled").toString()));
+                    }
+                    if (em.containsKey("weight")) {
+                        model.setSoftConstraintWeight(id, ((Number) em.get("weight")).intValue());
+                    }
+                } else if (e.getValue() instanceof Boolean b) {
+                    model.setSoftConstraintEnabled(id, b);
+                }
+            }
+        }
+
+        // Backward-compatible weights
+        if (cMap.containsKey("weights") && cMap.get("weights") instanceof Map<?, ?> wMap) {
+            for (Map.Entry<?, ?> e : wMap.entrySet()) {
+                try {
+                    String id = e.getKey().toString().trim().toUpperCase();
+                    int w = ((Number) e.getValue()).intValue();
+                    model.setSoftConstraintWeight(id, w);
+                } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private class ConstraintsHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            if (handleCorsPreflight(exchange)) return;
+            try {
+                if ("GET".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    Map<String, Object> response = new LinkedHashMap<>();
+                    response.put("status", "SUCCESS");
+                    response.put("constraints", buildConstraintsDto(activeModel));
+                    sendJsonResponse(exchange, 200, response);
+                } else if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    String body = readBody(exchange);
+                    if (!body.isBlank()) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> payload = objectMapper.readValue(body, Map.class);
+                        applyConstraintsMap(payload, activeModel);
+                        if (activeConfigFile != null) {
+                            activeModel.persistScheduleToConfigFile(activeConfigFile);
+                        }
+                        scheduleStale = true;
+                    }
+                    Map<String, Object> response = new LinkedHashMap<>();
+                    response.put("status", "SUCCESS");
+                    response.put("message", "Constraints configuration updated successfully.");
+                    response.put("constraints", buildConstraintsDto(activeModel));
+                    sendJsonResponse(exchange, 200, response);
+                } else {
+                    sendMethodNotAllowed(exchange, "GET, POST");
+                }
+            } catch (IllegalArgumentException e) {
+                LOGGER.log(Level.WARNING, "Bad request in /api/constraints: " + e.getMessage());
+                sendJsonResponse(exchange, 400, Map.of(
+                        "status", "ERROR",
+                        "error", e.getMessage()
+                ));
+            } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Error in /api/constraints", e);
+                sendInternalError(exchange, e.getMessage());
+            }
+        }
     }
 
     private Map<String, Object> buildValidationDto(ManualTimetableModel.ValidationReport rep) {
@@ -1017,19 +1296,44 @@ public class TimetableHttpServer {
                             }
                         }
 
-                        if (bellMap.containsKey("periodsPerDay")) {
-                            int ppd = ((Number) bellMap.get("periodsPerDay")).intValue();
-                            for (Day d : activeModel.getDays()) {
-                                activeModel.setDailyPeriods(d, ppd);
+                        int previousPpd = activeModel.getPeriodsPerDay();
+                        boolean hasPpd = bellMap.containsKey("periodsPerDay");
+                        int ppd = hasPpd ? ((Number) bellMap.get("periodsPerDay")).intValue() : previousPpd;
+                        if (hasPpd) {
+                            if (ppd < 1 || ppd > 12) {
+                                throw new IllegalArgumentException("Teaching periods per day must be between 1 and 12 (received " + ppd + ").");
                             }
+                            activeModel.setPeriodsPerDay(ppd);
                         }
 
                         if (bellMap.containsKey("dailyPeriods") && bellMap.get("dailyPeriods") instanceof Map<?, ?> dpMap) {
-                            for (Map.Entry<?, ?> entry : dpMap.entrySet()) {
-                                try {
-                                    Day d = Day.valueOf(entry.getKey().toString().trim().toUpperCase());
-                                    activeModel.setDailyPeriods(d, ((Number) entry.getValue()).intValue());
-                                } catch (Exception ignored) {}
+                            boolean isUniformDp = true;
+                            Integer uniformVal = null;
+                            for (Object v : dpMap.values()) {
+                                if (v instanceof Number n) {
+                                    int val = n.intValue();
+                                    if (uniformVal == null) {
+                                        uniformVal = val;
+                                    } else if (uniformVal != val) {
+                                        isUniformDp = false;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (!hasPpd || !isUniformDp || (uniformVal != null && uniformVal == ppd)) {
+                                for (Map.Entry<?, ?> entry : dpMap.entrySet()) {
+                                    try {
+                                        Day d = Day.valueOf(entry.getKey().toString().trim().toUpperCase());
+                                        int count = ((Number) entry.getValue()).intValue();
+                                        if (count < 0 || count > 12) {
+                                            throw new IllegalArgumentException("Daily periods for " + d + " must be between 0 and 12 (received " + count + ").");
+                                        }
+                                        activeModel.setDailyPeriod(d, count);
+                                    } catch (IllegalArgumentException e) {
+                                        throw e;
+                                    } catch (Exception ignored) {}
+                                }
                             }
                         }
 
@@ -1038,14 +1342,125 @@ public class TimetableHttpServer {
                         }
 
                         if (bellMap.containsKey("recessAfterPeriod")) {
-                            activeModel.setRecessAfterPeriod(((Number) bellMap.get("recessAfterPeriod")).intValue());
+                            int rec = ((Number) bellMap.get("recessAfterPeriod")).intValue();
+                            int minPpd = activeModel.getDays().stream()
+                                    .mapToInt(activeModel::getDailyPeriod)
+                                    .filter(p -> p > 0)
+                                    .min().orElse(activeModel.getPeriodsPerDay());
+                            if (rec < 1 || rec > minPpd) {
+                                throw new IllegalArgumentException(String.format(
+                                        "Recess placement (%d) must be between period 1 and %d.",
+                                        rec, minPpd
+                                ));
+                            }
+                            activeModel.setRecessAfterPeriod(rec);
                         }
 
                         if (bellMap.containsKey("recessOverrides") && bellMap.get("recessOverrides") instanceof Map<?, ?> recMap) {
                             for (Map.Entry<?, ?> entry : recMap.entrySet()) {
                                 try {
                                     Day d = Day.valueOf(entry.getKey().toString().trim().toUpperCase());
-                                    activeModel.setDailyRecessOverride(d, ((Number) entry.getValue()).intValue());
+                                    int p = ((Number) entry.getValue()).intValue();
+                                    if (p > 0) {
+                                        activeModel.setDailyRecessOverride(d, p);
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                        }
+
+                        if (bellMap.containsKey("dailyRecessAfterPeriod") && bellMap.get("dailyRecessAfterPeriod") instanceof Map<?, ?> drapMap) {
+                            for (Map.Entry<?, ?> entry : drapMap.entrySet()) {
+                                try {
+                                    Day d = Day.valueOf(entry.getKey().toString().trim().toUpperCase());
+                                    int p = ((Number) entry.getValue()).intValue();
+                                    if (p > 0) {
+                                        activeModel.setDailyRecessOverride(d, p);
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                        }
+
+                        if (bellMap.containsKey("dailyRecessEnabled") && bellMap.get("dailyRecessEnabled") instanceof Map<?, ?> dreMap) {
+                            for (Map.Entry<?, ?> entry : dreMap.entrySet()) {
+                                try {
+                                    Day d = Day.valueOf(entry.getKey().toString().trim().toUpperCase());
+                                    activeModel.setDailyRecessEnabled(d, Boolean.parseBoolean(entry.getValue().toString()));
+                                } catch (Exception ignored) {}
+                            }
+                        }
+
+                        if (bellMap.containsKey("dailyRecessDurations") && bellMap.get("dailyRecessDurations") instanceof Map<?, ?> drdMap) {
+                            for (Map.Entry<?, ?> entry : drdMap.entrySet()) {
+                                try {
+                                    Day d = Day.valueOf(entry.getKey().toString().trim().toUpperCase());
+                                    activeModel.setDailyRecessDuration(d, ((Number) entry.getValue()).intValue());
+                                } catch (Exception ignored) {}
+                            }
+                        }
+
+                        if (bellMap.containsKey("schoolStartTime") && bellMap.get("schoolStartTime") != null) {
+                            String st = bellMap.get("schoolStartTime").toString().trim();
+                            if (!st.matches("^\\d{1,2}:\\d{2}$")) {
+                                throw new IllegalArgumentException("School start time must be in HH:mm format (received " + st + ").");
+                            }
+                            activeModel.setSchoolStartTime(st);
+                        }
+
+                        if (bellMap.containsKey("saturdayStartTime") && bellMap.get("saturdayStartTime") != null) {
+                            String sst = bellMap.get("saturdayStartTime").toString().trim();
+                            if (!sst.matches("^\\d{1,2}:\\d{2}$")) {
+                                throw new IllegalArgumentException("Saturday start time must be in HH:mm format (received " + sst + ").");
+                            }
+                            activeModel.setSaturdayStartTime(sst);
+                        }
+
+                        if (bellMap.containsKey("defaultPeriodDuration")) {
+                            int dpd = ((Number) bellMap.get("defaultPeriodDuration")).intValue();
+                            if (dpd < 15 || dpd > 120) {
+                                throw new IllegalArgumentException("Default period duration must be between 15 and 120 minutes (received " + dpd + ").");
+                            }
+                            activeModel.setDefaultPeriodDuration(dpd);
+                        }
+
+                        if (bellMap.containsKey("passingTime")) {
+                            activeModel.setPassingTime(((Number) bellMap.get("passingTime")).intValue());
+                        }
+
+                        if (bellMap.containsKey("recessDuration")) {
+                            int rd = ((Number) bellMap.get("recessDuration")).intValue();
+                            if (rd < 5 || rd > 90) {
+                                throw new IllegalArgumentException("Recess duration must be between 5 and 90 minutes (received " + rd + ").");
+                            }
+                            activeModel.setRecessDuration(rd);
+                        }
+
+                        if (bellMap.containsKey("shortBreakEnabled")) {
+                            activeModel.setShortBreakEnabled(Boolean.parseBoolean(bellMap.get("shortBreakEnabled").toString()));
+                        }
+
+                        if (bellMap.containsKey("shortBreakAfterPeriod")) {
+                            activeModel.setShortBreakAfterPeriod(((Number) bellMap.get("shortBreakAfterPeriod")).intValue());
+                        }
+
+                        if (bellMap.containsKey("shortBreakDuration")) {
+                            activeModel.setShortBreakDuration(((Number) bellMap.get("shortBreakDuration")).intValue());
+                        }
+
+                        if (bellMap.containsKey("periodDurationOverrides") && bellMap.get("periodDurationOverrides") instanceof Map<?, ?> pdoMap) {
+                            for (Map.Entry<?, ?> entry : pdoMap.entrySet()) {
+                                try {
+                                    int p = Integer.parseInt(entry.getKey().toString());
+                                    int dur = ((Number) entry.getValue()).intValue();
+                                    activeModel.setPeriodDurationOverride(p, dur);
+                                } catch (Exception ignored) {}
+                            }
+                        }
+
+                        if (bellMap.containsKey("periodTimeOverrides") && bellMap.get("periodTimeOverrides") instanceof Map<?, ?> ptoMap) {
+                            for (Map.Entry<?, ?> entry : ptoMap.entrySet()) {
+                                try {
+                                    int p = Integer.parseInt(entry.getKey().toString());
+                                    activeModel.setPeriodTimeOverride(p, entry.getValue() != null ? entry.getValue().toString() : "");
                                 } catch (Exception ignored) {}
                             }
                         }
@@ -1113,6 +1528,15 @@ public class TimetableHttpServer {
                         }
                     }
 
+                    // 5. Constraints
+                    if (payload.containsKey("constraints") && payload.get("constraints") instanceof Map<?, ?> cMap) {
+                        applyConstraintsMap(cMap, activeModel);
+                    }
+
+                    if (activeConfigFile != null) {
+                        activeModel.persistScheduleToConfigFile(activeConfigFile);
+                    }
+                    scheduleStale = true;
                     ManualTimetableModel.ValidationReport rep = activeModel.validate();
                     Map<String, Object> response = new LinkedHashMap<>();
                     response.put("status", "SUCCESS");
@@ -1123,6 +1547,12 @@ public class TimetableHttpServer {
                 } else {
                     sendMethodNotAllowed(exchange, "GET, POST");
                 }
+            } catch (IllegalArgumentException e) {
+                LOGGER.log(Level.WARNING, "Bad request in /api/setup/model: " + e.getMessage());
+                sendJsonResponse(exchange, 400, Map.of(
+                        "status", "ERROR",
+                        "error", e.getMessage()
+                ));
             } catch (Exception e) {
                 LOGGER.log(Level.SEVERE, "Error in /api/setup/model", e);
                 sendInternalError(exchange, e.getMessage());
@@ -1141,6 +1571,10 @@ public class TimetableHttpServer {
 
             try {
                 activeModel.loadDefaultSchoolPreset();
+                if (activeConfigFile != null) {
+                    activeModel.persistScheduleToConfigFile(activeConfigFile);
+                }
+                scheduleStale = true;
                 ManualTimetableModel.ValidationReport rep = activeModel.validate();
 
                 Map<String, Object> response = new LinkedHashMap<>();

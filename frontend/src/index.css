@@ -9,41 +9,43 @@ html, body {
   padding: 0;
   width: 100%;
   height: 100%;
-  background-color: var(--color-obsidian-root);
-  color: var(--color-ivory);
+  background-color: var(--bg-canvas);
+  color: var(--color-text-primary);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 14.5px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  line-height: 1.5;
+  line-height: 1.55;
   overflow: hidden; /* Desktop application frame manages scrolling internally */
 }
 
 #root {
-  width: 100vw;
+  width: 100%;
+  max-width: 100%;
   height: 100vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background-color: var(--bg-canvas);
 }
 
 /* Custom Desktop Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-obsidian-base);
+  background: var(--bg-subtle);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-obsidian-border);
+  background: var(--surface-border-strong);
   border-radius: var(--radius-sm);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-terracotta);
+  background: var(--color-text-tertiary);
 }
 
 button {
@@ -56,4 +58,8 @@ button {
 input, select, textarea {
   font-family: inherit;
   outline: none;
+}
+
+code {
+  font-family: var(--font-mono);
 }

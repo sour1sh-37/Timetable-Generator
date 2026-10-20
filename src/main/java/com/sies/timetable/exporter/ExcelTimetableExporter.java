@@ -216,8 +216,13 @@ public class ExcelTimetableExporter {
                     }
 
                     Cell recCell = dRow.createCell(col++);
-                    recCell.setCellValue("RECESS");
-                    recCell.setCellStyle(recessStyle);
+                    if (config.isRecessEnabled(day)) {
+                        recCell.setCellValue("RECESS");
+                        recCell.setCellStyle(recessStyle);
+                    } else {
+                        recCell.setCellValue("---");
+                        recCell.setCellStyle(cellStyle);
+                    }
 
                     for (int p = defaultRecess + 1; p <= maxPeriods; p++) {
                         Cell scCell = dRow.createCell(col++);
@@ -288,8 +293,13 @@ public class ExcelTimetableExporter {
                     }
 
                     Cell recCell = dRow.createCell(col++);
-                    recCell.setCellValue("RECESS");
-                    recCell.setCellStyle(recessStyle);
+                    if (config.isRecessEnabled(day)) {
+                        recCell.setCellValue("RECESS");
+                        recCell.setCellStyle(recessStyle);
+                    } else {
+                        recCell.setCellValue("---");
+                        recCell.setCellStyle(cellStyle);
+                    }
 
                     for (int p = defaultRecess + 1; p <= maxPeriods; p++) {
                         Cell scCell = dRow.createCell(col++);
@@ -338,7 +348,8 @@ public class ExcelTimetableExporter {
         }
 
         Cell cRec = row.createCell(col++);
-        cRec.setCellValue("RECESS");
+        String recTime = config.getRecessTiming(Day.MONDAY);
+        cRec.setCellValue("RECESS" + (recTime.isBlank() ? "" : "\n" + recTime));
         cRec.setCellStyle(style);
 
         for (int p = defaultRecess + 1; p <= maxPeriods; p++) {

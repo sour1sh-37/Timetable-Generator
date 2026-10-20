@@ -14,7 +14,25 @@ import type {
   ScheduleEditRequest,
   ScheduleEditValidateResponse,
   ScheduleEditApplyResponse,
+  BackendStatusDto,
+  BackendLifecycleState,
+  ConstraintsResponse,
+  ConstraintsSetupDto,
 } from './types';
+
+export type { BackendLifecycleState, BackendStatusDto };
+
+export const isTauriEnvironment = (): boolean => {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+};
+
+export async function invokeTauriCommand<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (!isTauriEnvironment()) {
+    throw new Error('Desktop IPC bridge unavailable in browser mode.');
+  }
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<T>(command, args);
+}
 
 export const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8080';
 
@@ -31,6 +49,10 @@ export class TimetableApiClient {
 
   getBaseUrl(): string {
     return this.baseUrl;
+  }
+
+  isTauriEnvironment(): boolean {
+    return isTauriEnvironment();
   }
 
   private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -109,6 +131,68 @@ export class TimetableApiClient {
     });
   }
 
+  async startBackendProcess(): Promise<BackendStatusDto> {
+    if (isTauriEnvironment()) {
+      const res = await invokeTauriCommand<BackendStatusDto>('start_backend');
+      this.setBaseUrl(res.url);
+      return res;
+    }
+    // Browser fallback
+    const health = await this.getHealth();
+    return {
+      state: 'ONLINE',
+      port: health.port,
+      url: this.baseUrl,
+      error: null,
+    };
+  }
+
+  async shutdownBackendProcess(): Promise<BackendStatusDto> {
+    if (isTauriEnvironment()) {
+      return invokeTauriCommand<BackendStatusDto>('shutdown_backend');
+    }
+    await this.shutdown();
+    return {
+      state: 'OFFLINE',
+      port: 8080,
+      url: this.baseUrl,
+      error: null,
+    };
+  }
+
+  async restartBackendProcess(): Promise<BackendStatusDto> {
+    if (isTauriEnvironment()) {
+      const res = await invokeTauriCommand<BackendStatusDto>('restart_backend');
+      this.setBaseUrl(res.url);
+      return res;
+    }
+    await this.shutdown();
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    return this.startBackendProcess();
+  }
+
+  async getBackendLifecycleStatus(): Promise<BackendStatusDto> {
+    if (isTauriEnvironment()) {
+      return invokeTauriCommand<BackendStatusDto>('get_backend_status');
+    }
+    try {
+      const health = await this.getHealth();
+      return {
+        state: 'ONLINE',
+        port: health.port,
+        url: this.baseUrl,
+        error: null,
+      };
+    } catch {
+      return {
+        state: 'OFFLINE',
+        port: 8080,
+        url: this.baseUrl,
+        error: 'Backend daemon offline',
+      };
+    }
+  }
+
   // Phase 3 Solver & Studio Endpoints
   async startSolve(mode: 'preset' | 'workspace' = 'preset', folder?: string): Promise<{ status: string; jobId: string; message: string }> {
     return this.request<{ status: string; jobId: string; message: string }>('/api/solve/start', {
@@ -174,6 +258,18 @@ export class TimetableApiClient {
 
   async validateSetupModel(): Promise<SetupValidateResponse> {
     return this.request<SetupValidateResponse>('/api/setup/validate', { method: 'POST' });
+  }
+
+  async getConstraints(): Promise<ConstraintsResponse> {
+    return this.request<ConstraintsResponse>('/api/constraints', { method: 'GET' });
+  }
+
+  async updateConstraints(payload: Partial<ConstraintsSetupDto>): Promise<ConstraintsResponse> {
+    return this.request<ConstraintsResponse>('/api/constraints', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
   }
 
   async validateScheduleEdit(payload: ScheduleEditRequest): Promise<ScheduleEditValidateResponse> {

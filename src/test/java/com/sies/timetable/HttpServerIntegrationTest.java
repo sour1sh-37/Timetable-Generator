@@ -371,4 +371,40 @@ public class HttpServerIntegrationTest {
             server.setLatestResultForTesting(null);
         }
     }
+
+    @Test
+    public void testScheduleStaleTracking() throws Exception {
+        TimetableService.GenerationResult dummy = new TimetableService.GenerationResult(
+                true, null, null, null, null, null, null, null, null, null, null, 1.0
+        );
+        server.setLatestResultForTesting(dummy);
+
+        HttpRequest req1 = HttpRequest.newBuilder()
+                .uri(URI.create(server.getBaseUrl() + "/api/schedule/summary"))
+                .GET().build();
+        HttpResponse<String> resp1 = client.send(req1, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resp1.statusCode());
+        JsonNode json1 = mapper.readTree(resp1.body());
+        assertFalse(json1.get("isStale").asBoolean());
+
+        String updatePayload = """
+                {
+                  "schoolName": "SIES High School & Junior College"
+                }
+                """;
+        HttpRequest updateReq = HttpRequest.newBuilder()
+                .uri(URI.create(server.getBaseUrl() + "/api/setup/model"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(updatePayload))
+                .build();
+        HttpResponse<String> updateResp = client.send(updateReq, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, updateResp.statusCode());
+
+        HttpResponse<String> resp2 = client.send(req1, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, resp2.statusCode());
+        JsonNode json2 = mapper.readTree(resp2.body());
+        assertTrue(json2.get("isStale").asBoolean());
+
+        server.setLatestResultForTesting(null);
+    }
 }

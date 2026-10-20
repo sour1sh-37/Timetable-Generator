@@ -512,7 +512,7 @@ export const TimetableStudioView: React.FC<TimetableStudioViewProps> = ({ client
                 className={`view-mode-btn ${activeTab === 'diagnostics' ? 'is-active' : ''}`}
                 onClick={() => setActiveTab('diagnostics')}
               >
-                Axiom Diagnostics
+                Rule Verification
               </button>
             </div>
           )}
@@ -573,7 +573,7 @@ export const TimetableStudioView: React.FC<TimetableStudioViewProps> = ({ client
             </Button>
           ) : (
             <Button
-              variant={summary?.available ? 'outline' : 'gold'}
+              variant={summary?.available ? 'secondary' : 'primary'}
               size="sm"
               leftIcon={summary?.available ? <RotateCcw size={14} /> : <Play size={14} />}
               onClick={handleStartSolve}
@@ -614,6 +614,29 @@ export const TimetableStudioView: React.FC<TimetableStudioViewProps> = ({ client
         <div className="validation-alert-banner is-pass">
           <CheckCircle2 size={18} className="text-jade" />
           <span>{folderOpenNotice}</span>
+        </div>
+      )}
+
+      {/* Stale Schedule Notice Alert */}
+      {summary?.available && summary?.isStale && (
+        <div className="validation-alert-banner is-warning" style={{ margin: '0.75rem 0' }}>
+          <div className="validation-alert-banner__icon">
+            <AlertTriangle size={18} className="text-gold" />
+          </div>
+          <div className="validation-alert-banner__content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '1rem', flexWrap: 'wrap' }}>
+            <span>
+              <strong>Timetable Snapshot is Outdated:</strong> School configuration, subjects, or faculty allocations were modified after this schedule was generated.
+            </span>
+            <Button
+              variant="primary"
+              size="sm"
+              leftIcon={<Play size={13} />}
+              onClick={handleStartSolve}
+              isLoading={isLoadingSummary}
+            >
+              Re-Generate Updated Schedule
+            </Button>
+          </div>
         </div>
       )}
 
@@ -768,7 +791,7 @@ export const TimetableStudioView: React.FC<TimetableStudioViewProps> = ({ client
                   Cancel
                 </Button>
                 <Button
-                  variant="gold"
+                  variant="primary"
                   size="sm"
                   leftIcon={<Check size={14} />}
                   onClick={handleApplySwap}
@@ -913,18 +936,18 @@ export const TimetableStudioView: React.FC<TimetableStudioViewProps> = ({ client
             title={
               <span className="card-title-cluster">
                 <ShieldCheck size={18} className="text-jade" />
-                <span>Independent Constraint Axioms Verification</span>
+                <span>Institutional Rules & Constraints Verification</span>
               </span>
             }
-            subtitle="Verified independently post-solve against domain axioms"
+            subtitle="Verified independently against SIES academic timetable requirements"
             accentBorder="jade"
           >
             <table className="diag-violations-table">
               <thead>
                 <tr>
-                  <th>Constraint</th>
-                  <th>Name</th>
-                  <th>Severity</th>
+                  <th>Rule ID</th>
+                  <th>Constraint Name</th>
+                  <th>Type</th>
                   <th>Status</th>
                   <th>Violations</th>
                   <th>Penalty</th>
@@ -937,7 +960,7 @@ export const TimetableStudioView: React.FC<TimetableStudioViewProps> = ({ client
                     <td>{chk.name}</td>
                     <td>
                       <Badge variant={chk.type === 'HARD' ? 'crimson' : 'gold'} size="sm">
-                        {chk.type}
+                        {chk.type === 'HARD' ? 'Mandatory Rule' : 'Preference Rule'}
                       </Badge>
                     </td>
                     <td>
@@ -961,10 +984,10 @@ export const TimetableStudioView: React.FC<TimetableStudioViewProps> = ({ client
               title={
                 <span className="card-title-cluster">
                   <AlertTriangle size={18} className="text-terracotta" />
-                  <span>Granular Diagnostic Records ({validation.violations.length})</span>
+                  <span>Flagged Schedule Items ({validation.violations.length})</span>
                 </span>
               }
-              subtitle="Click any record to navigate directly to the affected timetable grid cell"
+              subtitle="Click any item to jump directly to the relevant period in the timetable matrix"
               accentBorder="terracotta"
             >
               <table className="diag-violations-table">
@@ -1016,7 +1039,7 @@ export const TimetableStudioView: React.FC<TimetableStudioViewProps> = ({ client
               download="timetable.xlsx"
               className="btn-export-link"
             >
-              <Button variant="gold" size="sm" leftIcon={<FileSpreadsheet size={14} />}>
+              <Button variant="primary" size="sm" leftIcon={<FileSpreadsheet size={14} />}>
                 Master Excel (.xlsx)
               </Button>
             </a>

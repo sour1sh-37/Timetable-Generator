@@ -66,7 +66,11 @@ public class TeacherTimetableCsvExporter {
                         }
                     }
 
-                    sb.append(",\"RECESS\"");
+                    if (config.isRecessEnabled(day)) {
+                        sb.append(",\"RECESS\"");
+                    } else {
+                        sb.append(",\"---\"");
+                    }
 
                     for (int p = defaultRecess + 1; p <= maxPeriods; p++) {
                         sb.append(",");

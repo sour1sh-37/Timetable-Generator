@@ -24,15 +24,37 @@ public class ManualTimetableModel {
     // 2. Timetable Structure
     private final List<Day> days = new ArrayList<>(Arrays.asList(Day.values()));
     private final Map<Day, Integer> dailyPeriods = new HashMap<>();
+    private int periodsPerDay = 8;
     private int weeklyRequiredPeriodsPerClass = 48;
     private int recessAfterPeriod = 4;
     private final Map<Day, Integer> dailyRecessOverrides = new HashMap<>();
+    private final Map<Day, Boolean> dailyRecessEnabled = new HashMap<>();
+    private final Map<Day, Integer> dailyRecessDurations = new HashMap<>();
+    private String schoolStartTime = "07:10";
+    private String saturdayStartTime = "07:30";
+    private int defaultPeriodDuration = 35;
+    private int passingTime = 0;
+    private int recessDuration = 20;
+    private boolean shortBreakEnabled = false;
+    private int shortBreakAfterPeriod = 2;
+    private int shortBreakDuration = 10;
+    private final Map<Integer, Integer> periodDurationOverrides = new HashMap<>();
+    private final Map<Integer, String> periodTimeOverrides = new HashMap<>();
 
     // 3. Subjects
     private final List<Subject> subjects = new ArrayList<>();
 
     // 4. Professors & Allocations
     private final List<ProfessorEntry> professors = new ArrayList<>();
+
+    // 5. Constraints Configuration
+    private final Map<String, Boolean> hardConstraintsEnabled = new LinkedHashMap<>();
+    private final Map<String, Boolean> softConstraintsEnabled = new LinkedHashMap<>();
+    private final Map<String, Integer> softConstraintWeights = new LinkedHashMap<>();
+    private int h2MaxContinuousLectures = 2;
+    private int h5MaxConcurrentLabClasses = 1;
+    private int h6ProhibitedPeriod = 1;
+    private int h8MaxActivityPeriodsPerDay = 2;
 
     public ManualTimetableModel() {
         initDefaultStructure();
@@ -51,12 +73,43 @@ public class ManualTimetableModel {
 
         recomputeGeneratedClasses();
 
+        this.periodsPerDay = 8;
+        this.schoolStartTime = "07:10";
+        this.saturdayStartTime = "07:30";
+        this.defaultPeriodDuration = 35;
+        this.passingTime = 0;
+        this.recessDuration = 20;
+        this.shortBreakEnabled = false;
+        this.shortBreakAfterPeriod = 2;
+        this.shortBreakDuration = 10;
+        this.periodDurationOverrides.clear();
+        this.periodDurationOverrides.put(1, 40);
+        this.periodTimeOverrides.clear();
+
         for (Day d : Day.values()) {
             dailyPeriods.put(d, 8);
             dailyRecessOverrides.put(d, 4);
+            dailyRecessEnabled.put(d, true);
+            dailyRecessDurations.put(d, 20);
         }
         weeklyRequiredPeriodsPerClass = 48;
         recessAfterPeriod = 4;
+
+        hardConstraintsEnabled.clear();
+        for (int i = 1; i <= 10; i++) hardConstraintsEnabled.put("H" + i, true);
+        softConstraintsEnabled.clear();
+        for (int i = 1; i <= 6; i++) softConstraintsEnabled.put("S" + i, true);
+        softConstraintWeights.clear();
+        softConstraintWeights.put("S1", 100);
+        softConstraintWeights.put("S2", 80);
+        softConstraintWeights.put("S3", 50);
+        softConstraintWeights.put("S4", 40);
+        softConstraintWeights.put("S5", 30);
+        softConstraintWeights.put("S6", 20);
+        h2MaxContinuousLectures = 2;
+        h5MaxConcurrentLabClasses = 1;
+        h6ProhibitedPeriod = 1;
+        h8MaxActivityPeriodsPerDay = 2;
     }
 
     // =========================================================================
@@ -150,16 +203,50 @@ public class ManualTimetableModel {
         }
     }
 
+    public int getPeriodsPerDay() {
+        return periodsPerDay > 0 ? periodsPerDay : getDailyPeriod(Day.MONDAY);
+    }
+
+    public void setPeriodsPerDay(int periods) {
+        if (periods < 1 || periods > 12) {
+            throw new IllegalArgumentException("Teaching periods per day must be between 1 and 12 (received " + periods + ")");
+        }
+        this.periodsPerDay = periods;
+        for (Day d : Day.values()) {
+            dailyPeriods.put(d, periods);
+        }
+        if (this.recessAfterPeriod >= periods) {
+            this.recessAfterPeriod = Math.max(1, periods - 1);
+        }
+    }
+
     public int getDailyPeriod(Day day) {
-        return dailyPeriods.getOrDefault(day, 8);
+        return dailyPeriods.getOrDefault(day, periodsPerDay > 0 ? periodsPerDay : 8);
     }
 
     public void setDailyPeriod(Day day, int periods) {
-        dailyPeriods.put(day, Math.max(0, periods));
+        int safePeriods = Math.max(0, periods);
+        dailyPeriods.put(day, safePeriods);
+        this.periodsPerDay = dailyPeriods.values().stream().mapToInt(Integer::intValue).max().orElse(8);
+        if (this.recessAfterPeriod >= safePeriods && safePeriods > 1) {
+            this.recessAfterPeriod = safePeriods - 1;
+        }
+        int curOverride = dailyRecessOverrides.getOrDefault(day, recessAfterPeriod);
+        if (safePeriods > 1 && curOverride >= safePeriods) {
+            dailyRecessOverrides.put(day, safePeriods - 1);
+        } else if (safePeriods <= 1) {
+            dailyRecessEnabled.put(day, false);
+        }
     }
 
     public void setDailyPeriods(Day day, int periods) {
         setDailyPeriod(day, periods);
+    }
+
+    public void setDailyPeriodsMap(Map<Day, Integer> map) {
+        if (map != null) {
+            map.forEach(this::setDailyPeriod);
+        }
     }
 
     public Map<Day, Integer> getDailyPeriods() {
@@ -190,12 +277,136 @@ public class ManualTimetableModel {
         this.recessAfterPeriod = Math.max(1, p);
     }
 
+    public int getDailyRecessPosition(Day day) {
+        int dp = dailyPeriods.getOrDefault(day, periodsPerDay);
+        int rec = dailyRecessOverrides.getOrDefault(day, recessAfterPeriod);
+        if (rec < 1 || (dp > 1 && rec >= dp)) {
+            return Math.max(1, Math.min(recessAfterPeriod, dp > 1 ? dp - 1 : 1));
+        }
+        return rec;
+    }
+
     public int getRecessAfterPeriod(Day day) {
-        return dailyRecessOverrides.getOrDefault(day, recessAfterPeriod);
+        if (!isRecessEnabled(day)) {
+            return 0; // 0 explicitly signifies NO RECESS for downstream solver & exporters
+        }
+        int rec = dailyRecessOverrides.getOrDefault(day, recessAfterPeriod);
+        return (rec > 0) ? rec : getDailyRecessPosition(day);
     }
 
     public void setDailyRecessOverride(Day day, int p) {
-        dailyRecessOverrides.put(day, p);
+        if (p > 0) {
+            dailyRecessOverrides.put(day, p);
+        }
+    }
+
+    public boolean isRecessEnabled(Day day) {
+        if (dailyRecessEnabled.containsKey(day)) {
+            return Boolean.TRUE.equals(dailyRecessEnabled.get(day));
+        }
+        int dp = dailyPeriods.getOrDefault(day, periodsPerDay);
+        if (day == Day.SATURDAY && dp <= 4) {
+            return false;
+        }
+        return dp > 1;
+    }
+
+    public void setDailyRecessEnabled(Day day, boolean enabled) {
+        dailyRecessEnabled.put(day, enabled);
+    }
+
+    public Map<Day, Boolean> getDailyRecessEnabled() {
+        return Collections.unmodifiableMap(dailyRecessEnabled);
+    }
+
+    public void setDailyRecessEnabledMap(Map<Day, Boolean> map) {
+        this.dailyRecessEnabled.clear();
+        if (map != null) this.dailyRecessEnabled.putAll(map);
+    }
+
+    public Map<Day, Integer> getDailyRecessOverrides() {
+        return Collections.unmodifiableMap(dailyRecessOverrides);
+    }
+
+    public void setDailyRecessOverridesMap(Map<Day, Integer> map) {
+        this.dailyRecessOverrides.clear();
+        if (map != null) this.dailyRecessOverrides.putAll(map);
+    }
+
+    public int getDailyRecessDuration(Day day) {
+        return dailyRecessDurations.getOrDefault(day, recessDuration > 0 ? recessDuration : 20);
+    }
+
+    public void setDailyRecessDuration(Day day, int duration) {
+        dailyRecessDurations.put(day, Math.max(1, duration));
+    }
+
+    public Map<Day, Integer> getDailyRecessDurations() {
+        return Collections.unmodifiableMap(dailyRecessDurations);
+    }
+
+    public void setDailyRecessDurationsMap(Map<Day, Integer> map) {
+        this.dailyRecessDurations.clear();
+        if (map != null) this.dailyRecessDurations.putAll(map);
+    }
+
+    public String getSchoolStartTime() { return schoolStartTime != null ? schoolStartTime : "07:10"; }
+    public void setSchoolStartTime(String schoolStartTime) { this.schoolStartTime = schoolStartTime; }
+
+    public String getSaturdayStartTime() { return saturdayStartTime != null ? saturdayStartTime : "07:30"; }
+    public void setSaturdayStartTime(String saturdayStartTime) { this.saturdayStartTime = saturdayStartTime; }
+
+    public int getDefaultPeriodDuration() { return defaultPeriodDuration > 0 ? defaultPeriodDuration : 35; }
+    public void setDefaultPeriodDuration(int defaultPeriodDuration) { this.defaultPeriodDuration = Math.max(1, defaultPeriodDuration); }
+
+    public int getPassingTime() { return passingTime; }
+    public void setPassingTime(int passingTime) { this.passingTime = Math.max(0, passingTime); }
+
+    public int getRecessDuration() { return recessDuration > 0 ? recessDuration : 20; }
+    public void setRecessDuration(int recessDuration) {
+        this.recessDuration = Math.max(1, recessDuration);
+        for (Day d : getDays()) {
+            dailyRecessDurations.put(d, this.recessDuration);
+        }
+    }
+
+    public boolean isShortBreakEnabled() { return shortBreakEnabled; }
+    public void setShortBreakEnabled(boolean shortBreakEnabled) { this.shortBreakEnabled = shortBreakEnabled; }
+
+    public int getShortBreakAfterPeriod() { return shortBreakAfterPeriod; }
+    public void setShortBreakAfterPeriod(int shortBreakAfterPeriod) { this.shortBreakAfterPeriod = Math.max(1, shortBreakAfterPeriod); }
+
+    public int getShortBreakDuration() { return shortBreakDuration > 0 ? shortBreakDuration : 10; }
+    public void setShortBreakDuration(int shortBreakDuration) { this.shortBreakDuration = Math.max(1, shortBreakDuration); }
+
+    public Map<Integer, Integer> getPeriodDurationOverrides() {
+        return Collections.unmodifiableMap(periodDurationOverrides);
+    }
+
+    public void setPeriodDurationOverride(int period, int duration) {
+        periodDurationOverrides.put(period, Math.max(1, duration));
+    }
+
+    public void setPeriodDurationOverridesMap(Map<Integer, Integer> map) {
+        this.periodDurationOverrides.clear();
+        if (map != null) this.periodDurationOverrides.putAll(map);
+    }
+
+    public Map<Integer, String> getPeriodTimeOverrides() {
+        return Collections.unmodifiableMap(periodTimeOverrides);
+    }
+
+    public void setPeriodTimeOverride(int period, String timing) {
+        if (timing != null && !timing.isBlank()) {
+            periodTimeOverrides.put(period, timing.trim());
+        } else {
+            periodTimeOverrides.remove(period);
+        }
+    }
+
+    public void setPeriodTimeOverridesMap(Map<Integer, String> map) {
+        this.periodTimeOverrides.clear();
+        if (map != null) this.periodTimeOverrides.putAll(map);
     }
 
     // =========================================================================
@@ -345,6 +556,25 @@ public class ManualTimetableModel {
         // 1. Academic Structure Checks
         if (generatedClasses.isEmpty()) {
             errors.add("No classes defined. Please configure at least one standard and division.");
+        }
+
+        // 1b. Bell Schedule and Recess Integrity
+        for (Day d : days) {
+            int dp = dailyPeriods.getOrDefault(d, 0);
+            if (dp < 1 || dp > 12) {
+                errors.add(String.format("Invalid teaching periods count for %s: %d periods (must be between 1 and 12).",
+                        d.getDisplayName(), dp));
+            }
+            if (isRecessEnabled(d)) {
+                int rec = dailyRecessOverrides.getOrDefault(d, recessAfterPeriod);
+                if (dp <= 1) {
+                    errors.add(String.format("Invalid recess placement for %s: Day only has %d period, so recess cannot be scheduled. Please disable recess for %s.",
+                            d.getDisplayName(), dp, d.getDisplayName()));
+                } else if (rec < 1 || rec >= dp) {
+                    errors.add(String.format("Invalid recess placement for %s: After period %d (daily periods: %d; recess must be between 1 and %d).",
+                            d.getDisplayName(), rec, dp, dp - 1));
+                }
+            }
         }
 
         // 2. Capacity Check: Available >= Required
@@ -515,12 +745,43 @@ public class ManualTimetableModel {
     public SchoolConfig buildSchoolConfig() {
         SchoolConfig cfg = SchoolConfig.createDefault();
         cfg.setDays(new ArrayList<>(days));
+        cfg.setPeriodsPerDay(getPeriodsPerDay());
         cfg.setDailyPeriods(new HashMap<>(dailyPeriods));
         cfg.setWeeklyRequiredPeriodsPerClass(weeklyRequiredPeriodsPerClass);
         cfg.setRecessAfterPeriod(recessAfterPeriod);
-        for (Map.Entry<Day, Integer> e : dailyRecessOverrides.entrySet()) {
-            cfg.setDailyRecessAfterPeriod(e.getKey(), e.getValue());
+        for (Day d : days) {
+            cfg.setDailyRecessAfterPeriod(d, getDailyRecessPosition(d));
+            cfg.setDailyRecessEnabled(d, isRecessEnabled(d));
+            cfg.setDailyRecessDuration(d, getDailyRecessDuration(d));
         }
+        cfg.setSchoolStartTime(schoolStartTime);
+        cfg.setSaturdayStartTime(saturdayStartTime);
+        cfg.setDefaultPeriodDurationMinutes(defaultPeriodDuration);
+        cfg.setPassingTimeMinutes(passingTime);
+        cfg.setRecessDurationMinutes(recessDuration);
+        cfg.setShortBreakEnabled(shortBreakEnabled);
+        cfg.setShortBreakAfterPeriod(shortBreakAfterPeriod);
+        cfg.setShortBreakDurationMinutes(shortBreakDuration);
+        cfg.setPeriodDurationOverrides(new HashMap<>(periodDurationOverrides));
+        cfg.setPeriodTimeOverrides(new HashMap<>(periodTimeOverrides));
+
+        for (Map.Entry<String, Boolean> e : hardConstraintsEnabled.entrySet()) {
+            try {
+                cfg.setHardConstraintEnabled(e.getKey(), e.getValue());
+            } catch (Exception ignored) {}
+        }
+        for (Map.Entry<String, Boolean> e : softConstraintsEnabled.entrySet()) {
+            cfg.setSoftConstraintEnabled(e.getKey(), e.getValue());
+        }
+        for (Map.Entry<String, Integer> e : softConstraintWeights.entrySet()) {
+            try {
+                cfg.setSoftConstraintWeight(e.getKey(), e.getValue());
+            } catch (Exception ignored) {}
+        }
+        cfg.setH2MaxContinuousLectures(h2MaxContinuousLectures);
+        cfg.setH5MaxConcurrentLabClasses(h5MaxConcurrentLabClasses);
+        cfg.setH6ProhibitedPeriod(h6ProhibitedPeriod);
+        cfg.setH8MaxActivityPeriodsPerDay(h8MaxActivityPeriodsPerDay);
 
         for (Subject s : subjects) {
             if (s.isRequiresLab()) {
@@ -528,6 +789,95 @@ public class ManualTimetableModel {
             }
         }
         return cfg;
+    }
+
+    @SuppressWarnings("unchecked")
+    public boolean persistScheduleToConfigFile(File cfgFile) {
+        if (cfgFile == null) return false;
+        try {
+            org.yaml.snakeyaml.Yaml yaml = new org.yaml.snakeyaml.Yaml();
+            Map<String, Object> data = null;
+            if (cfgFile.exists()) {
+                try (java.io.InputStream in = new java.io.FileInputStream(cfgFile)) {
+                    data = yaml.load(in);
+                } catch (Exception ignored) {}
+            }
+            if (data == null) {
+                data = new LinkedHashMap<>();
+            }
+
+            Map<String, Object> scheduleMap = (Map<String, Object>) data.computeIfAbsent("schedule", k -> new LinkedHashMap<>());
+            scheduleMap.put("days", days.stream().map(Enum::name).toList());
+            scheduleMap.put("periods_per_day", getPeriodsPerDay());
+            scheduleMap.put("recess_after_period", recessAfterPeriod);
+            scheduleMap.put("weekly_required_periods_per_class", weeklyRequiredPeriodsPerClass);
+
+            Map<String, Integer> dpMap = new LinkedHashMap<>();
+            for (Day d : days) {
+                dpMap.put(d.name(), getDailyPeriod(d));
+            }
+            scheduleMap.put("daily_periods", dpMap);
+
+            Map<String, Boolean> dreMap = new LinkedHashMap<>();
+            for (Day d : days) {
+                dreMap.put(d.name(), isRecessEnabled(d));
+            }
+            scheduleMap.put("daily_recess_enabled", dreMap);
+
+            Map<String, Integer> drapMap = new LinkedHashMap<>();
+            for (Day d : days) {
+                drapMap.put(d.name(), getDailyRecessPosition(d));
+            }
+            scheduleMap.put("daily_recess_after_period", drapMap);
+
+            Map<String, Integer> drdMap = new LinkedHashMap<>();
+            for (Day d : days) {
+                drdMap.put(d.name(), getDailyRecessDuration(d));
+            }
+            scheduleMap.put("daily_recess_durations", drdMap);
+
+            Map<String, Object> tcMap = new LinkedHashMap<>();
+            tcMap.put("start_time", schoolStartTime);
+            tcMap.put("saturday_start_time", saturdayStartTime);
+            tcMap.put("default_period_duration", defaultPeriodDuration);
+            tcMap.put("passing_time", passingTime);
+            tcMap.put("recess_duration", recessDuration);
+            tcMap.put("short_break_enabled", shortBreakEnabled);
+            tcMap.put("short_break_after_period", shortBreakAfterPeriod);
+            tcMap.put("short_break_duration", shortBreakDuration);
+
+            Map<Integer, Integer> pdoMap = new LinkedHashMap<>(periodDurationOverrides);
+            tcMap.put("period_duration_overrides", pdoMap);
+            Map<Integer, String> ptoMap = new LinkedHashMap<>(periodTimeOverrides);
+            tcMap.put("period_time_overrides", ptoMap);
+            scheduleMap.put("timing_config", tcMap);
+
+            // Compute dynamic period timings for Monday
+            SchoolConfig tmpCfg = buildSchoolConfig();
+            Map<Object, String> periodTimings = new LinkedHashMap<>(tmpCfg.computePeriodTimings(Day.MONDAY));
+            String recTime = tmpCfg.getRecessTiming(Day.MONDAY);
+            if (!recTime.isBlank()) {
+                periodTimings.put("recess", recTime);
+            }
+            scheduleMap.put("period_timings", periodTimings);
+
+            // Persist structured constraints
+            data.put("constraints", tmpCfg.toConstraintsMap());
+
+            File parent = cfgFile.getParentFile();
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs();
+            }
+
+            try (java.io.Writer writer = new java.io.FileWriter(cfgFile)) {
+                yaml.dump(data, writer);
+            }
+            return true;
+        } catch (Exception e) {
+            java.util.logging.Logger.getLogger(ManualTimetableModel.class.getName())
+                    .log(java.util.logging.Level.WARNING, "Failed to persist schedule to " + cfgFile, e);
+            return false;
+        }
     }
 
     // =========================================================================
@@ -574,12 +924,48 @@ public class ManualTimetableModel {
             recomputeGeneratedClasses();
 
             // 2. Schedule
-            for (Day d : Day.values()) {
-                this.dailyPeriods.put(d, 8);
-                this.dailyRecessOverrides.put(d, 4);
+            int ppd = config.getPeriodsPerDay() > 0 ? config.getPeriodsPerDay() : 8;
+            this.periodsPerDay = ppd;
+            this.recessAfterPeriod = config.getRecessAfterPeriod() > 0 ? config.getRecessAfterPeriod() : 4;
+            if (config.getDays() != null && !config.getDays().isEmpty()) {
+                this.days.clear();
+                this.days.addAll(config.getDays());
             }
-            this.weeklyRequiredPeriodsPerClass = 48;
-            this.recessAfterPeriod = 4;
+            for (Day d : Day.values()) {
+                int dp = config.getDailyPeriods(d);
+                this.dailyPeriods.put(d, dp > 0 ? dp : ppd);
+                int recPos = config.getRawRecessAfterPeriod(d);
+                this.dailyRecessOverrides.put(d, recPos > 0 ? recPos : Math.max(1, Math.min(recessAfterPeriod, dp > 1 ? dp - 1 : 1)));
+                this.dailyRecessEnabled.put(d, config.isRecessEnabled(d));
+                this.dailyRecessDurations.put(d, config.getRecessDuration(d));
+            }
+            this.schoolStartTime = config.getSchoolStartTime();
+            this.saturdayStartTime = config.getSaturdayStartTime();
+            this.defaultPeriodDuration = config.getDefaultPeriodDurationMinutes();
+            this.passingTime = config.getPassingTimeMinutes();
+            this.recessDuration = config.getRecessDurationMinutes();
+            this.shortBreakEnabled = config.isShortBreakEnabled();
+            this.shortBreakAfterPeriod = config.getShortBreakAfterPeriod();
+            this.shortBreakDuration = config.getShortBreakDurationMinutes();
+            this.periodDurationOverrides.clear();
+            this.periodDurationOverrides.putAll(config.getPeriodDurationOverrides());
+            this.periodTimeOverrides.clear();
+            this.periodTimeOverrides.putAll(config.getPeriodTimeOverrides());
+
+            this.weeklyRequiredPeriodsPerClass = config.getWeeklyRequiredPeriodsPerClass() > 0 ?
+                    config.getWeeklyRequiredPeriodsPerClass() : (ppd * this.days.size());
+
+            // Constraints configuration
+            this.hardConstraintsEnabled.clear();
+            this.hardConstraintsEnabled.putAll(config.getHardConstraintsEnabled());
+            this.softConstraintsEnabled.clear();
+            this.softConstraintsEnabled.putAll(config.getSoftConstraintsEnabled());
+            this.softConstraintWeights.clear();
+            this.softConstraintWeights.putAll(config.getSoftConstraintWeights());
+            this.h2MaxContinuousLectures = config.getH2MaxContinuousLectures();
+            this.h5MaxConcurrentLabClasses = config.getH5MaxConcurrentLabClasses();
+            this.h6ProhibitedPeriod = config.getH6ProhibitedPeriod();
+            this.h8MaxActivityPeriodsPerDay = config.getH8MaxActivityPeriodsPerDay();
 
             // 3. Subjects
             this.subjects.clear();
@@ -633,6 +1019,108 @@ public class ManualTimetableModel {
             e.printStackTrace();
             return false;
         }
+    }
+
+    // =========================================================================
+    // Constraints Configuration Getters & Setters
+    // =========================================================================
+
+    public Map<String, Boolean> getHardConstraintsEnabled() {
+        Map<String, Boolean> res = new LinkedHashMap<>();
+        for (int i = 1; i <= 10; i++) {
+            String id = "H" + i;
+            res.put(id, isHardConstraintEnabled(id));
+        }
+        return res;
+    }
+
+    public boolean isHardConstraintEnabled(String id) {
+        if (SchoolConfig.isHardConstraintMandatory(id)) return true;
+        return hardConstraintsEnabled.getOrDefault(id.toUpperCase().trim(), true);
+    }
+
+    public void setHardConstraintEnabled(String id, boolean enabled) {
+        String u = id.trim().toUpperCase();
+        if (!enabled && SchoolConfig.isHardConstraintMandatory(u)) {
+            throw new IllegalArgumentException("Constraint " + u + " is mandatory for timetable integrity and cannot be disabled.");
+        }
+        hardConstraintsEnabled.put(u, enabled);
+    }
+
+    public Map<String, Boolean> getSoftConstraintsEnabled() {
+        Map<String, Boolean> res = new LinkedHashMap<>();
+        for (int i = 1; i <= 6; i++) {
+            String id = "S" + i;
+            res.put(id, isSoftConstraintEnabled(id));
+        }
+        return res;
+    }
+
+    public boolean isSoftConstraintEnabled(String id) {
+        return softConstraintsEnabled.getOrDefault(id.toUpperCase().trim(), true);
+    }
+
+    public void setSoftConstraintEnabled(String id, boolean enabled) {
+        softConstraintsEnabled.put(id.toUpperCase().trim(), enabled);
+    }
+
+    public Map<String, Integer> getSoftConstraintWeights() {
+        return new LinkedHashMap<>(softConstraintWeights);
+    }
+
+    public int getSoftConstraintWeight(String id, int defaultVal) {
+        return softConstraintWeights.getOrDefault(id.toUpperCase().trim(), defaultVal);
+    }
+
+    public void setSoftConstraintWeight(String id, int weight) {
+        if (weight < 0 || weight > 500) {
+            throw new IllegalArgumentException("Soft constraint weight must be between 0 and 500.");
+        }
+        softConstraintWeights.put(id.toUpperCase().trim(), weight);
+    }
+
+    public int getH2MaxContinuousLectures() {
+        return h2MaxContinuousLectures > 0 ? h2MaxContinuousLectures : 2;
+    }
+
+    public void setH2MaxContinuousLectures(int val) {
+        if (val < 1 || val > 8) {
+            throw new IllegalArgumentException("H2 max continuous lectures must be between 1 and 8 periods.");
+        }
+        this.h2MaxContinuousLectures = val;
+    }
+
+    public int getH5MaxConcurrentLabClasses() {
+        return h5MaxConcurrentLabClasses > 0 ? h5MaxConcurrentLabClasses : 1;
+    }
+
+    public void setH5MaxConcurrentLabClasses(int val) {
+        if (val < 1 || val > 10) {
+            throw new IllegalArgumentException("H5 max concurrent lab classes must be between 1 and 10.");
+        }
+        this.h5MaxConcurrentLabClasses = val;
+    }
+
+    public int getH6ProhibitedPeriod() {
+        return h6ProhibitedPeriod > 0 ? h6ProhibitedPeriod : 1;
+    }
+
+    public void setH6ProhibitedPeriod(int val) {
+        if (val < 1 || val > 12) {
+            throw new IllegalArgumentException("H6 prohibited period must be between 1 and 12.");
+        }
+        this.h6ProhibitedPeriod = val;
+    }
+
+    public int getH8MaxActivityPeriodsPerDay() {
+        return h8MaxActivityPeriodsPerDay > 0 ? h8MaxActivityPeriodsPerDay : 2;
+    }
+
+    public void setH8MaxActivityPeriodsPerDay(int val) {
+        if (val < 1 || val > 8) {
+            throw new IllegalArgumentException("H8 max activity periods per day must be between 1 and 8.");
+        }
+        this.h8MaxActivityPeriodsPerDay = val;
     }
 
     public void clearAll() {

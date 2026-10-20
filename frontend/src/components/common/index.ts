@@ -5,3 +5,4 @@ export * from './StatusIndicator';
 export * from './Modal';
 export * from './LoadingSpinner';
 export * from './EmptyState';
+export * from './ColorPicker';

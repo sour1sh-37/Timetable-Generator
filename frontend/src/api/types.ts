@@ -1,3 +1,18 @@
+export type BackendLifecycleState =
+  | 'STARTING'
+  | 'ONLINE'
+  | 'SHUTTING_DOWN'
+  | 'OFFLINE'
+  | 'RECOVERING'
+  | 'FAILED';
+
+export interface BackendStatusDto {
+  state: BackendLifecycleState;
+  port: number;
+  url: string;
+  error?: string | null;
+}
+
 export interface JvmStats {
   version: string;
   vendor: string;
@@ -121,6 +136,7 @@ export interface OutputFilesPaths {
 export interface ScheduleSummaryResponse {
   status: 'SUCCESS' | 'ERROR';
   available: boolean;
+  isStale?: boolean;
   message?: string;
   solveTimeSeconds?: number;
   qualityIndex?: number;
@@ -242,7 +258,59 @@ export interface BellScheduleSetup {
   recessAfterPeriod: number;
   dailyPeriods: Record<string, number>;
   recessOverrides: Record<string, number>;
+  dailyRecessEnabled?: Record<string, boolean>;
+  dailyRecessAfterPeriod?: Record<string, number>;
+  dailyRecessDurations?: Record<string, number>;
   saturdayEnabled: boolean;
+  schoolStartTime?: string;
+  saturdayStartTime?: string;
+  defaultPeriodDuration?: number;
+  passingTime?: number;
+  recessDuration?: number;
+  shortBreakEnabled?: boolean;
+  shortBreakAfterPeriod?: number;
+  shortBreakDuration?: number;
+  periodDurationOverrides?: Record<string, number>;
+  periodTimeOverrides?: Record<string, string>;
+  computedTimings?: {
+    weekday?: Record<string, string>;
+    saturday?: Record<string, string>;
+    recessWeekday?: string;
+    recessSaturday?: string;
+  };
+}
+
+export interface HardConstraintConfig {
+  id: string;
+  name: string;
+  description: string;
+  mandatory: boolean;
+  enabled: boolean;
+  maxContinuousLectures?: number;
+  maxConcurrentLabClasses?: number;
+  prohibitedPeriod?: number;
+  maxActivityPeriodsPerDay?: number;
+}
+
+export interface SoftConstraintConfig {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  weight: number;
+  defaultWeight: number;
+}
+
+export interface ConstraintsSetupDto {
+  hardConstraints: Record<string, HardConstraintConfig>;
+  softConstraints: Record<string, SoftConstraintConfig>;
+}
+
+export interface ConstraintsResponse {
+  status: 'SUCCESS' | 'ERROR';
+  message?: string;
+  error?: string;
+  constraints: ConstraintsSetupDto;
 }
 
 export interface SetupModelDto {
@@ -253,6 +321,7 @@ export interface SetupModelDto {
   subjects: SubjectSetupItem[];
   professors: ProfessorSetupItem[];
   bellSchedule: BellScheduleSetup;
+  constraints?: ConstraintsSetupDto;
 }
 
 export interface SetupValidationDto {

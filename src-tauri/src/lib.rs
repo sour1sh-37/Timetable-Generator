@@ -7,14 +7,258 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 
-pub struct AppState {
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum BackendLifecycleState {
+    Starting,
+    Online,
+    ShuttingDown,
+    Offline,
+    Recovering,
+    Failed,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackendStatusDto {
+    pub state: BackendLifecycleState,
     pub port: u16,
+    pub url: String,
+    pub error: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct AppState {
+    pub bound_port: Arc<Mutex<u16>>,
     pub backend_child: Arc<Mutex<Option<Child>>>,
+    pub java_bin: PathBuf,
+    pub backend_jar: PathBuf,
+    pub working_dir: PathBuf,
+    pub state: Arc<Mutex<BackendLifecycleState>>,
+    pub last_error: Arc<Mutex<Option<String>>>,
+    pub lifecycle_lock: Arc<Mutex<()>>,
+}
+
+impl AppState {
+    pub fn do_get_status(&self) -> BackendStatusDto {
+        let port = *self.bound_port.lock().unwrap();
+        let mut current_state = *self.state.lock().unwrap();
+        let err = self.last_error.lock().unwrap().clone();
+
+        // If marked online, perform a quick 300ms verification
+        if current_state == BackendLifecycleState::Online {
+            if wait_for_health(port, Duration::from_millis(300)).is_err() {
+                current_state = BackendLifecycleState::Offline;
+                *self.state.lock().unwrap() = BackendLifecycleState::Offline;
+            }
+        }
+
+        BackendStatusDto {
+            state: current_state,
+            port,
+            url: format!("http://127.0.0.1:{port}"),
+            error: err,
+        }
+    }
+
+    pub fn do_start(&self) -> Result<BackendStatusDto, String> {
+        let _guard = self.lifecycle_lock.lock().unwrap();
+        let mut port = *self.bound_port.lock().unwrap();
+
+        // 1. If already responding to health checks, confirm online
+        if wait_for_health(port, Duration::from_millis(400)).is_ok() {
+            *self.state.lock().unwrap() = BackendLifecycleState::Online;
+            *self.last_error.lock().unwrap() = None;
+            return Ok(BackendStatusDto {
+                state: BackendLifecycleState::Online,
+                port,
+                url: format!("http://127.0.0.1:{port}"),
+                error: None,
+            });
+        }
+
+        // 2. Clean up any dead child process handle
+        if let Ok(mut child_lock) = self.backend_child.lock() {
+            if let Some(mut old_child) = child_lock.take() {
+                let _ = old_child.try_wait();
+            }
+        }
+
+        *self.state.lock().unwrap() = BackendLifecycleState::Starting;
+        *self.last_error.lock().unwrap() = None;
+
+        // 3. Ensure port is available or find a free ephemeral port
+        if TcpListener::bind(format!("127.0.0.1:{port}")).is_err() {
+            let next_port = find_available_port();
+            println!("[TAURI] Port {port} is occupied; shifting backend to port {next_port}");
+            port = next_port;
+            *self.bound_port.lock().unwrap() = port;
+        }
+
+        // 4. Launch backend daemon
+        println!(
+            "[TAURI] Spawning backend daemon: {:?} with JAR {:?} on port {}",
+            self.java_bin, self.backend_jar, port
+        );
+
+        let child = match spawn_java_backend(
+            &self.java_bin,
+            &self.backend_jar,
+            &self.working_dir,
+            port,
+        ) {
+            Ok(c) => c,
+            Err(e) => {
+                *self.state.lock().unwrap() = BackendLifecycleState::Failed;
+                let err_msg = format!("Failed to spawn Java backend daemon: {e}");
+                *self.last_error.lock().unwrap() = Some(err_msg.clone());
+                eprintln!("[TAURI ERROR] {err_msg}");
+                return Err(err_msg);
+            }
+        };
+
+        *self.backend_child.lock().unwrap() = Some(child);
+
+        // 5. Await health verification
+        println!("[TAURI] Awaiting backend health verification on 127.0.0.1:{port}...");
+        match wait_for_health(port, Duration::from_secs(25)) {
+            Ok(()) => {
+                *self.state.lock().unwrap() = BackendLifecycleState::Online;
+                *self.last_error.lock().unwrap() = None;
+                println!("[TAURI] Backend daemon is UP and verified healthy on port {port}");
+                Ok(BackendStatusDto {
+                    state: BackendLifecycleState::Online,
+                    port,
+                    url: format!("http://127.0.0.1:{port}"),
+                    error: None,
+                })
+            }
+            Err(e) => {
+                *self.state.lock().unwrap() = BackendLifecycleState::Failed;
+                let err_msg = format!("Backend failed to respond to health check: {e}");
+                *self.last_error.lock().unwrap() = Some(err_msg.clone());
+                eprintln!("[TAURI ERROR] {err_msg}");
+                Err(err_msg)
+            }
+        }
+    }
+
+    pub fn do_shutdown(&self) -> Result<BackendStatusDto, String> {
+        let _guard = self.lifecycle_lock.lock().unwrap();
+        let port = *self.bound_port.lock().unwrap();
+
+        *self.state.lock().unwrap() = BackendLifecycleState::ShuttingDown;
+        println!("[TAURI] Initiating backend graceful termination on port {port}...");
+
+        send_shutdown_signal(port);
+
+        // Poll for up to 2.5 seconds for graceful exit
+        let start = Instant::now();
+        let mut terminated = false;
+        while start.elapsed() < Duration::from_millis(2500) {
+            if let Ok(mut child_lock) = self.backend_child.lock() {
+                if let Some(ref mut child) = *child_lock {
+                    if let Ok(Some(_)) = child.try_wait() {
+                        terminated = true;
+                        break;
+                    }
+                } else {
+                    terminated = true;
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        if !terminated {
+            println!("[TAURI] Backend did not terminate within graceful window; terminating process...");
+            if let Ok(mut child_lock) = self.backend_child.lock() {
+                if let Some(mut child) = child_lock.take() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        } else if let Ok(mut child_lock) = self.backend_child.lock() {
+            let _ = child_lock.take();
+        }
+
+        *self.state.lock().unwrap() = BackendLifecycleState::Offline;
+        *self.last_error.lock().unwrap() = None;
+        println!("[TAURI] Backend daemon is now OFFLINE.");
+
+        Ok(BackendStatusDto {
+            state: BackendLifecycleState::Offline,
+            port,
+            url: format!("http://127.0.0.1:{port}"),
+            error: None,
+        })
+    }
+
+    pub fn do_restart(&self) -> Result<BackendStatusDto, String> {
+        println!("[TAURI] Restarting backend daemon...");
+        let _ = self.do_shutdown();
+        std::thread::sleep(Duration::from_millis(300));
+        *self.state.lock().unwrap() = BackendLifecycleState::Recovering;
+        self.do_start()
+    }
+}
+
+fn spawn_java_backend(
+    java_bin: &Path,
+    backend_jar: &Path,
+    working_dir: &Path,
+    port: u16,
+) -> Result<Child, String> {
+    let mut cmd = Command::new(java_bin);
+    cmd.arg("--enable-native-access=ALL-UNNAMED")
+        .arg("-Djava.awt.headless=true")
+        .arg("-jar")
+        .arg(backend_jar)
+        .arg("--server")
+        .arg(port.to_string())
+        .current_dir(working_dir);
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Java backend process: {e}"))?;
+
+    #[cfg(windows)]
+    win_job::setup_kill_on_close_job(&child);
+
+    Ok(child)
 }
 
 #[tauri::command]
 fn get_backend_url(state: tauri::State<AppState>) -> String {
-    format!("http://127.0.0.1:{}", state.port)
+    let port = *state.bound_port.lock().unwrap();
+    format!("http://127.0.0.1:{port}")
+}
+
+#[tauri::command]
+fn get_backend_status(state: tauri::State<AppState>) -> BackendStatusDto {
+    state.do_get_status()
+}
+
+#[tauri::command]
+fn start_backend(state: tauri::State<AppState>) -> Result<BackendStatusDto, String> {
+    state.do_start()
+}
+
+#[tauri::command]
+fn shutdown_backend(state: tauri::State<AppState>) -> Result<BackendStatusDto, String> {
+    state.do_shutdown()
+}
+
+#[tauri::command]
+fn restart_backend(state: tauri::State<AppState>) -> Result<BackendStatusDto, String> {
+    state.do_restart()
 }
 
 fn find_available_port() -> u16 {
@@ -232,13 +476,8 @@ fn send_shutdown_signal(port: u16) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let backend_child_holder: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
-    let child_for_lifecycle = Arc::clone(&backend_child_holder);
-    let bound_port_holder: Arc<Mutex<u16>> = Arc::new(Mutex::new(8080));
-    let port_for_lifecycle = Arc::clone(&bound_port_holder);
-
     let app = tauri::Builder::default()
-        .setup(move |app| {
+        .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -249,7 +488,6 @@ pub fn run() {
 
             // 1. Determine Port
             let port = find_available_port();
-            *bound_port_holder.lock().unwrap() = port;
 
             // 2. Prepare User Writable Data Directory
             let working_dir = match initialize_user_data_dir(app.handle()) {
@@ -272,58 +510,25 @@ pub fn run() {
                 }
             };
 
-            // 4. Launch Java Backend Daemon (Headless, no visible console window)
-            let mut cmd = Command::new(&java_bin);
-            cmd.arg("--enable-native-access=ALL-UNNAMED")
-                .arg("-Djava.awt.headless=true")
-                .arg("-jar")
-                .arg(&backend_jar)
-                .arg("--server")
-                .arg(port.to_string())
-                .current_dir(&working_dir);
-
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                const CREATE_NO_WINDOW: u32 = 0x08000000;
-                cmd.creation_flags(CREATE_NO_WINDOW);
-            }
-
-            println!(
-                "[TAURI] Spawning backend daemon: {:?} with JAR {:?} on port {}",
-                java_bin, backend_jar, port
-            );
-
-            let child = match cmd.spawn() {
-                Ok(c) => c,
-                Err(e) => {
-                    eprintln!("[TAURI ERROR] Failed to spawn Java backend daemon: {e}");
-                    return Err(Box::new(e));
-                }
+            // 4. Construct managed application state
+            let app_state = AppState {
+                bound_port: Arc::new(Mutex::new(port)),
+                backend_child: Arc::new(Mutex::new(None)),
+                java_bin,
+                backend_jar,
+                working_dir,
+                state: Arc::new(Mutex::new(BackendLifecycleState::Starting)),
+                last_error: Arc::new(Mutex::new(None)),
+                lifecycle_lock: Arc::new(Mutex::new(())),
             };
 
-            #[cfg(windows)]
-            win_job::setup_kill_on_close_job(&child);
-
-            *backend_child_holder.lock().unwrap() = Some(child);
-
-            // 5. Wait for Backend Readiness (Handshake)
-            println!("[TAURI] Awaiting backend health check on 127.0.0.1:{}...", port);
-            if let Err(e) = wait_for_health(port, Duration::from_secs(25)) {
-                eprintln!("[TAURI ERROR] Health check handshake failed: {e}");
-                return Err(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    e,
-                )));
+            // 5. Initial start of the backend daemon
+            if let Err(e) = app_state.do_start() {
+                eprintln!("[TAURI WARNING] Initial backend launch failed (user can start via UI): {e}");
             }
 
-            println!("[TAURI] Backend daemon is UP and verified healthy on port {}", port);
-
-            // 6. Register App State
-            app.manage(AppState {
-                port,
-                backend_child: Arc::clone(&backend_child_holder),
-            });
+            // 6. Manage state
+            app.manage(app_state);
 
             // 7. Inject backend URL into main webview window
             if let Some(main_window) = app.get_webview_window("main") {
@@ -333,20 +538,21 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_backend_url])
+        .invoke_handler(tauri::generate_handler![
+            get_backend_url,
+            get_backend_status,
+            start_backend,
+            shutdown_backend,
+            restart_backend
+        ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(move |_app_handle, event| {
+    app.run(move |app_handle, event| {
         if let tauri::RunEvent::ExitRequested { .. } = event {
-            let port = *port_for_lifecycle.lock().unwrap();
-            println!("[TAURI] Application exit requested. Initiating backend shutdown on port {port}...");
-            send_shutdown_signal(port);
-            std::thread::sleep(Duration::from_millis(400));
-            if let Ok(mut guard) = child_for_lifecycle.lock() {
-                if let Some(mut child) = guard.take() {
-                    let _ = child.kill();
-                }
+            println!("[TAURI] Application exit requested. Initiating backend shutdown...");
+            if let Some(state) = app_handle.try_state::<AppState>() {
+                let _ = state.do_shutdown();
             }
         }
     });

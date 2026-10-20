@@ -105,21 +105,28 @@ public class HardConstraintBuilder {
         // H2: Maximum Continuous Lectures Per Teacher
         // Enforce within each continuous session (partitioned by recess)
         // -------------------------------------------------------------
-        for (int tIdx = 0; tIdx < numTeachers; tIdx++) {
-            Teacher teacher = recResult.teachers().get(tIdx);
-            int maxCont = (teacher.getTotalWorkload() <= 30) ? 2 : 3;
+        if (config.isHardConstraintEnabled("H2")) {
+            int baseMax = config.getH2MaxContinuousLectures();
+            for (int tIdx = 0; tIdx < numTeachers; tIdx++) {
+                Teacher teacher = recResult.teachers().get(tIdx);
+                int maxCont = (teacher.getTotalWorkload() <= 30) ? baseMax : Math.max(baseMax, baseMax + 1);
 
-            for (int d = 0; d < numDays; d++) {
-                int numPeriodsForDay = config.getDailyPeriods(config.getDays().get(d));
-                int recessP = config.getRecessAfterPeriod(config.getDays().get(d));
+                for (int d = 0; d < numDays; d++) {
+                    Day day = config.getDays().get(d);
+                    int numPeriodsForDay = config.getDailyPeriods(day);
+                    boolean hasRecess = config.isRecessEnabled(day);
+                    int recessP = hasRecess ? config.getRecessAfterPeriod(day) : 0;
 
-                // Session 1: 0 .. min(recessP, numPeriodsForDay) - 1
-                int s1End = Math.min(recessP, numPeriodsForDay);
-                applyConsecutiveLimits(model, isTeaching[tIdx][d], 0, s1End, maxCont);
+                    if (hasRecess && recessP > 0 && recessP < numPeriodsForDay) {
+                        // Session 1: 0 .. recessP - 1
+                        applyConsecutiveLimits(model, isTeaching[tIdx][d], 0, recessP, maxCont);
 
-                // Session 2: recessP .. numPeriodsForDay - 1
-                if (recessP < numPeriodsForDay) {
-                    applyConsecutiveLimits(model, isTeaching[tIdx][d], recessP, numPeriodsForDay, maxCont);
+                        // Session 2: recessP .. numPeriodsForDay - 1
+                        applyConsecutiveLimits(model, isTeaching[tIdx][d], recessP, numPeriodsForDay, maxCont);
+                    } else {
+                        // Single continuous session for entire day without recess
+                        applyConsecutiveLimits(model, isTeaching[tIdx][d], 0, numPeriodsForDay, maxCont);
+                    }
                 }
             }
         }
@@ -127,41 +134,43 @@ public class HardConstraintBuilder {
         // -------------------------------------------------------------
         // H1: Class Teacher First Period Allocation
         // -------------------------------------------------------------
-        for (int c = 0; c < numClasses; c++) {
-            SchoolClass sc = recResult.classes().get(c);
-            ClassTeacherMapping ctm = recResult.classTeacherMappings().get(sc);
-            if (ctm != null && ctm.getClassTeacher() != null) {
-                Teacher ct = ctm.getClassTeacher();
-                List<TeachingAllocation> allocs = classAllocMap.getOrDefault(c, Collections.emptyList());
+        if (config.isHardConstraintEnabled("H1")) {
+            for (int c = 0; c < numClasses; c++) {
+                SchoolClass sc = recResult.classes().get(c);
+                ClassTeacherMapping ctm = recResult.classTeacherMappings().get(sc);
+                if (ctm != null && ctm.getClassTeacher() != null) {
+                    Teacher ct = ctm.getClassTeacher();
+                    List<TeachingAllocation> allocs = classAllocMap.getOrDefault(c, Collections.emptyList());
 
-                List<Integer> ctAllocIndices = new ArrayList<>();
-                int totalCtPeriodsInClass = 0;
-                for (int aIdx = 0; aIdx < allocs.size(); aIdx++) {
-                    if (allocs.get(aIdx).getTeacher().equals(ct)) {
-                        ctAllocIndices.add(aIdx);
-                        totalCtPeriodsInClass += allocs.get(aIdx).getPeriodCount();
-                    }
-                }
-
-                if (!ctAllocIndices.isEmpty()) {
-                    int activeDaysWithP1 = 0;
-                    LinearExprBuilder p1Sum = LinearExpr.newBuilder();
-                    for (int d = 0; d < numDays; d++) {
-                        int numPeriodsForDay = config.getDailyPeriods(config.getDays().get(d));
-                        if (numPeriodsForDay > 0) {
-                            activeDaysWithP1++;
-                            LinearExprBuilder dayP1Sum = LinearExpr.newBuilder();
-                            for (int aIdx : ctAllocIndices) {
-                                p1Sum.add(x[c][d][0][aIdx]);
-                                dayP1Sum.add(x[c][d][0][aIdx]);
-                            }
-                            // At most 1 session of class teacher in Period 1 on any day d
-                            model.addLessOrEqual(dayP1Sum.build(), 1);
+                    List<Integer> ctAllocIndices = new ArrayList<>();
+                    int totalCtPeriodsInClass = 0;
+                    for (int aIdx = 0; aIdx < allocs.size(); aIdx++) {
+                        if (allocs.get(aIdx).getTeacher().equals(ct)) {
+                            ctAllocIndices.add(aIdx);
+                            totalCtPeriodsInClass += allocs.get(aIdx).getPeriodCount();
                         }
                     }
-                    int targetPeriod1Slots = Math.min(activeDaysWithP1, totalCtPeriodsInClass);
-                    // Enforce class teacher fills min(activeDays, allocated periods) Period 1 slots
-                    model.addEquality(p1Sum.build(), targetPeriod1Slots);
+
+                    if (!ctAllocIndices.isEmpty()) {
+                        int activeDaysWithP1 = 0;
+                        LinearExprBuilder p1Sum = LinearExpr.newBuilder();
+                        for (int d = 0; d < numDays; d++) {
+                            int numPeriodsForDay = config.getDailyPeriods(config.getDays().get(d));
+                            if (numPeriodsForDay > 0) {
+                                activeDaysWithP1++;
+                                LinearExprBuilder dayP1Sum = LinearExpr.newBuilder();
+                                for (int aIdx : ctAllocIndices) {
+                                    p1Sum.add(x[c][d][0][aIdx]);
+                                    dayP1Sum.add(x[c][d][0][aIdx]);
+                                }
+                                // At most 1 session of class teacher in Period 1 on any day d
+                                model.addLessOrEqual(dayP1Sum.build(), 1);
+                            }
+                        }
+                        int targetPeriod1Slots = Math.min(activeDaysWithP1, totalCtPeriodsInClass);
+                        // Enforce class teacher fills min(activeDays, allocated periods) Period 1 slots
+                        model.addEquality(p1Sum.build(), targetPeriod1Slots);
+                    }
                 }
             }
         }
@@ -169,32 +178,39 @@ public class HardConstraintBuilder {
         // -------------------------------------------------------------
         // H5: Computer Lab Exclusivity (No Simultaneous Computer Classes)
         // -------------------------------------------------------------
-        for (int d = 0; d < numDays; d++) {
-            int numPeriodsForDay = config.getDailyPeriods(config.getDays().get(d));
-            for (int p = 0; p < numPeriodsForDay; p++) {
-                LinearExprBuilder labSum = LinearExpr.newBuilder();
-                for (int c = 0; c < numClasses; c++) {
-                    List<TeachingAllocation> allocs = classAllocMap.getOrDefault(c, Collections.emptyList());
-                    for (int aIdx = 0; aIdx < allocs.size(); aIdx++) {
-                        if (allocs.get(aIdx).isComputer()) {
-                            labSum.add(x[c][d][p][aIdx]);
+        if (config.isHardConstraintEnabled("H5")) {
+            int maxLab = config.getH5MaxConcurrentLabClasses();
+            for (int d = 0; d < numDays; d++) {
+                int numPeriodsForDay = config.getDailyPeriods(config.getDays().get(d));
+                for (int p = 0; p < numPeriodsForDay; p++) {
+                    LinearExprBuilder labSum = LinearExpr.newBuilder();
+                    for (int c = 0; c < numClasses; c++) {
+                        List<TeachingAllocation> allocs = classAllocMap.getOrDefault(c, Collections.emptyList());
+                        for (int aIdx = 0; aIdx < allocs.size(); aIdx++) {
+                            if (allocs.get(aIdx).isComputer()) {
+                                labSum.add(x[c][d][p][aIdx]);
+                            }
                         }
                     }
+                    model.addLessOrEqual(labSum.build(), maxLab);
                 }
-                model.addLessOrEqual(labSum.build(), 1);
             }
         }
 
         // -------------------------------------------------------------
-        // H6: Physical Education Prohibited in Period 1 (Index 0)
+        // H6: Physical Education Prohibited Period
         // -------------------------------------------------------------
-        for (int c = 0; c < numClasses; c++) {
-            List<TeachingAllocation> allocs = classAllocMap.getOrDefault(c, Collections.emptyList());
-            for (int aIdx = 0; aIdx < allocs.size(); aIdx++) {
-                if (allocs.get(aIdx).isPhysicalEducation()) {
-                    for (int d = 0; d < numDays; d++) {
-                        if (config.getDailyPeriods(config.getDays().get(d)) > 0) {
-                            model.addEquality(x[c][d][0][aIdx], 0);
+        if (config.isHardConstraintEnabled("H6")) {
+            int prohibitedPeriod = config.getH6ProhibitedPeriod();
+            int prohibitedIdx = prohibitedPeriod - 1;
+            for (int c = 0; c < numClasses; c++) {
+                List<TeachingAllocation> allocs = classAllocMap.getOrDefault(c, Collections.emptyList());
+                for (int aIdx = 0; aIdx < allocs.size(); aIdx++) {
+                    if (allocs.get(aIdx).isPhysicalEducation()) {
+                        for (int d = 0; d < numDays; d++) {
+                            if (config.getDailyPeriods(config.getDays().get(d)) > prohibitedIdx && prohibitedIdx >= 0) {
+                                model.addEquality(x[c][d][prohibitedIdx][aIdx], 0);
+                            }
                         }
                     }
                 }
@@ -204,15 +220,20 @@ public class HardConstraintBuilder {
         // -------------------------------------------------------------
         // H7: Physical Education Prohibited Immediately After Recess
         // -------------------------------------------------------------
-        for (int c = 0; c < numClasses; c++) {
-            List<TeachingAllocation> allocs = classAllocMap.getOrDefault(c, Collections.emptyList());
-            for (int aIdx = 0; aIdx < allocs.size(); aIdx++) {
-                if (allocs.get(aIdx).isPhysicalEducation()) {
-                    for (int d = 0; d < numDays; d++) {
-                        int numPeriodsForDay = config.getDailyPeriods(config.getDays().get(d));
-                        int recessP = config.getRecessAfterPeriod(config.getDays().get(d));
-                        if (recessP < numPeriodsForDay) {
-                            model.addEquality(x[c][d][recessP][aIdx], 0);
+        if (config.isHardConstraintEnabled("H7")) {
+            for (int c = 0; c < numClasses; c++) {
+                List<TeachingAllocation> allocs = classAllocMap.getOrDefault(c, Collections.emptyList());
+                for (int aIdx = 0; aIdx < allocs.size(); aIdx++) {
+                    if (allocs.get(aIdx).isPhysicalEducation()) {
+                        for (int d = 0; d < numDays; d++) {
+                            Day day = config.getDays().get(d);
+                            if (config.isRecessEnabled(day)) {
+                                int numPeriodsForDay = config.getDailyPeriods(day);
+                                int recessP = config.getRecessAfterPeriod(day);
+                                if (recessP > 0 && recessP < numPeriodsForDay) {
+                                    model.addEquality(x[c][d][recessP][aIdx], 0);
+                                }
+                            }
                         }
                     }
                 }
@@ -220,58 +241,73 @@ public class HardConstraintBuilder {
         }
 
         // -------------------------------------------------------------
-        // H8: Maximum Two Activity Periods Per Class Per Day
+        // H8: Maximum Activity Periods Per Class Per Day
         // -------------------------------------------------------------
-        for (int c = 0; c < numClasses; c++) {
-            List<TeachingAllocation> allocs = classAllocMap.getOrDefault(c, Collections.emptyList());
-            for (int d = 0; d < numDays; d++) {
-                int numPeriodsForDay = config.getDailyPeriods(config.getDays().get(d));
-                LinearExprBuilder actSum = LinearExpr.newBuilder();
-                for (int p = 0; p < numPeriodsForDay; p++) {
-                    for (int aIdx = 0; aIdx < allocs.size(); aIdx++) {
-                        if (allocs.get(aIdx).isActivity()) {
-                            actSum.add(x[c][d][p][aIdx]);
+        if (config.isHardConstraintEnabled("H8")) {
+            int maxAct = config.getH8MaxActivityPeriodsPerDay();
+            for (int c = 0; c < numClasses; c++) {
+                List<TeachingAllocation> allocs = classAllocMap.getOrDefault(c, Collections.emptyList());
+                for (int d = 0; d < numDays; d++) {
+                    int numPeriodsForDay = config.getDailyPeriods(config.getDays().get(d));
+                    LinearExprBuilder actSum = LinearExpr.newBuilder();
+                    for (int p = 0; p < numPeriodsForDay; p++) {
+                        for (int aIdx = 0; aIdx < allocs.size(); aIdx++) {
+                            if (allocs.get(aIdx).isActivity()) {
+                                actSum.add(x[c][d][p][aIdx]);
+                            }
                         }
                     }
+                    model.addLessOrEqual(actSum.build(), maxAct);
                 }
-                model.addLessOrEqual(actSum.build(), 2);
             }
         }
 
         // -------------------------------------------------------------
         // H10: P.E. & Computer Same-Day Partition Around Recess
         // -------------------------------------------------------------
-        for (int c = 0; c < numClasses; c++) {
-            List<TeachingAllocation> allocs = classAllocMap.getOrDefault(c, Collections.emptyList());
-            List<Integer> peIndices = new ArrayList<>();
-            List<Integer> compIndices = new ArrayList<>();
+        if (config.isHardConstraintEnabled("H10")) {
+            for (int c = 0; c < numClasses; c++) {
+                List<TeachingAllocation> allocs = classAllocMap.getOrDefault(c, Collections.emptyList());
+                List<Integer> peIndices = new ArrayList<>();
+                List<Integer> compIndices = new ArrayList<>();
 
-            for (int aIdx = 0; aIdx < allocs.size(); aIdx++) {
-                if (allocs.get(aIdx).isPhysicalEducation()) peIndices.add(aIdx);
-                if (allocs.get(aIdx).isComputer()) compIndices.add(aIdx);
-            }
+                for (int aIdx = 0; aIdx < allocs.size(); aIdx++) {
+                    if (allocs.get(aIdx).isPhysicalEducation()) peIndices.add(aIdx);
+                    if (allocs.get(aIdx).isComputer()) compIndices.add(aIdx);
+                }
 
-            if (!peIndices.isEmpty() && !compIndices.isEmpty()) {
-                for (int d = 0; d < numDays; d++) {
-                    int numPeriodsForDay = config.getDailyPeriods(config.getDays().get(d));
-                    int recessP = config.getRecessAfterPeriod(config.getDays().get(d));
+                if (!peIndices.isEmpty() && !compIndices.isEmpty()) {
+                    for (int d = 0; d < numDays; d++) {
+                        Day day = config.getDays().get(d);
+                        int numPeriodsForDay = config.getDailyPeriods(day);
+                        boolean hasRecess = config.isRecessEnabled(day);
+                        int recessP = hasRecess ? config.getRecessAfterPeriod(day) : 0;
 
-                    if (recessP < numPeriodsForDay) {
-                        LinearExprBuilder preSum = LinearExpr.newBuilder();
-                        LinearExprBuilder postSum = LinearExpr.newBuilder();
+                        if (hasRecess && recessP > 0 && recessP < numPeriodsForDay) {
+                            LinearExprBuilder preSum = LinearExpr.newBuilder();
+                            LinearExprBuilder postSum = LinearExpr.newBuilder();
 
-                        for (int p = 0; p < recessP; p++) {
-                            for (int aIdx : peIndices) preSum.add(x[c][d][p][aIdx]);
-                            for (int aIdx : compIndices) preSum.add(x[c][d][p][aIdx]);
+                            for (int p = 0; p < recessP; p++) {
+                                for (int aIdx : peIndices) preSum.add(x[c][d][p][aIdx]);
+                                for (int aIdx : compIndices) preSum.add(x[c][d][p][aIdx]);
+                            }
+
+                            for (int p = recessP; p < numPeriodsForDay; p++) {
+                                for (int aIdx : peIndices) postSum.add(x[c][d][p][aIdx]);
+                                for (int aIdx : compIndices) postSum.add(x[c][d][p][aIdx]);
+                            }
+
+                            model.addLessOrEqual(preSum.build(), 1);
+                            model.addLessOrEqual(postSum.build(), 1);
+                        } else {
+                            // Days without recess: at most one of PE or Computer on this day
+                            LinearExprBuilder daySum = LinearExpr.newBuilder();
+                            for (int p = 0; p < numPeriodsForDay; p++) {
+                                for (int aIdx : peIndices) daySum.add(x[c][d][p][aIdx]);
+                                for (int aIdx : compIndices) daySum.add(x[c][d][p][aIdx]);
+                            }
+                            model.addLessOrEqual(daySum.build(), 1);
                         }
-
-                        for (int p = recessP; p < numPeriodsForDay; p++) {
-                            for (int aIdx : peIndices) postSum.add(x[c][d][p][aIdx]);
-                            for (int aIdx : compIndices) postSum.add(x[c][d][p][aIdx]);
-                        }
-
-                        model.addLessOrEqual(preSum.build(), 1);
-                        model.addLessOrEqual(postSum.build(), 1);
                     }
                 }
             }

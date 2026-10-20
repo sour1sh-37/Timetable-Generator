@@ -1,80 +1,58 @@
-school:
-  name: "Sample High School"
-  academic_year: "2026-27"
-
+school: {name: Sample High School, academic_year: 2026-27}
 schedule:
-  days:
-    - MONDAY
-    - TUESDAY
-    - WEDNESDAY
-    - THURSDAY
-    - FRIDAY
-    - SATURDAY
+  days: [MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY]
   periods_per_day: 8
   recess_after_period: 4
-  period_timings:
-    1: "07:10 - 07:50"
-    2: "07:50 - 08:25"
-    3: "08:25 - 09:00"
-    4: "09:00 - 09:30"
-    recess: "09:30 - 09:50"
-    5: "09:50 - 10:25"
-    6: "10:25 - 11:00"
-    7: "11:00 - 11:35"
-    8: "11:35 - 12:10"
-
+  period_timings: {1: '07:30 - 08:10', 2: '08:10 - 08:45', 3: '08:45 - 09:20', 4: '09:20
+      - 09:55', 5: '10:15 - 10:50', 6: '10:50 - 11:25', 7: '11:25 - 12:00', 8: '12:00
+      - 12:35', recess: '09:55 - 10:15'}
+  weekly_required_periods_per_class: 48
+  daily_periods: {MONDAY: 8, TUESDAY: 8, WEDNESDAY: 8, THURSDAY: 8, FRIDAY: 8, SATURDAY: 8}
+  daily_recess_enabled: {MONDAY: true, TUESDAY: true, WEDNESDAY: true, THURSDAY: true,
+    FRIDAY: true, SATURDAY: true}
+  daily_recess_after_period: {MONDAY: 4, TUESDAY: 4, WEDNESDAY: 4, THURSDAY: 4, FRIDAY: 4,
+    SATURDAY: 4}
+  daily_recess_durations: {MONDAY: 20, TUESDAY: 20, WEDNESDAY: 20, THURSDAY: 20, FRIDAY: 20,
+    SATURDAY: 20}
+  timing_config:
+    start_time: 07:30
+    saturday_start_time: 08:00
+    default_period_duration: 35
+    passing_time: 0
+    recess_duration: 20
+    short_break_enabled: false
+    short_break_after_period: 2
+    short_break_duration: 10
+    period_duration_overrides: {}
+    period_time_overrides: {}
 subjects:
-  core_academic:
-    - "ENGLISH"
-    - "MARATHI"
-    - "HINDI"
-    - "SANSKRIT"
-    - "MATHS"
-    - "ALGEBRA"
-    - "GEOMETRY"
-    - "SCIENCE"
-    - "SCIENCE I"
-    - "SCIENCE II"
-    - "EVS I"
-    - "EVS II"
-    - "HISTORY"
-    - "GEOGRAPHY"
-  activity:
-    - "P.E"
-    - "P.E."
-    - "COMPUTER"
-    - "ART"
-    - "CRAFT"
-    - "MUSIC"
-    - "LIBRARY"
-    - "SCOUT & GUIDE"
-    - "SELF DEFENCE"
-    - "CCA"
-  special_curricular:
-    - "VALUE EDUCATION"
-    - "WATER SECURITY"
-  lab_resources:
-    "COMPUTER": "COMPUTER_LAB"
-
-solver:
-  time_limit_seconds: 60
-  num_search_workers: 8
-  random_seed: 42
-  log_search_progress: false
-
+  core_academic: [ENGLISH, MARATHI, HINDI, SANSKRIT, MATHS, ALGEBRA, GEOMETRY, SCIENCE,
+    SCIENCE I, SCIENCE II, EVS I, EVS II, HISTORY, GEOGRAPHY]
+  activity: [P.E, P.E., COMPUTER, ART, CRAFT, MUSIC, LIBRARY, SCOUT & GUIDE, SELF
+      DEFENCE, CCA]
+  special_curricular: [VALUE EDUCATION, WATER SECURITY]
+  lab_resources: {COMPUTER: COMPUTER_LAB}
+solver: {time_limit_seconds: 60, num_search_workers: 8, random_seed: 42, log_search_progress: false}
 constraints:
-  constraints_csv_path: "sample-data/sample-constraints.csv"
-  weights:
-    S1: 100
-    S2: 80
-    S3: 50
-    S4: 40
-    S5: 30
-    S6: 20
-
-paths:
-  standardwise_file: "sample-data/sample-standardwise-allotment.xlsx"
-  teacherwise_file: "sample-data/sample-teacherwise-allotment.xlsx"
-  class_teachers_file: "sample-data/sample-classteacher-list.xlsx"
-  constraints_file: "sample-data/sample-constraints.csv"
-  output_dir: "output"
+  weights: {S1: 120, S2: 90, S3: 50, S4: 40, S5: 30, S6: 20}
+  hard_constraints:
+    H1: {enabled: true}
+    H2: {enabled: true, max_continuous_lectures: 3}
+    H3: {enabled: true}
+    H4: {enabled: true}
+    H5: {enabled: true, max_concurrent_lab_classes: 2}
+    H6: {enabled: true, prohibited_period: 1}
+    H7: {enabled: true}
+    H8: {enabled: true, max_activity_periods_per_day: 3}
+    H9: {enabled: true}
+    H10: {enabled: true}
+  soft_constraints:
+    S1: {enabled: true, weight: 120}
+    S2: {enabled: true, weight: 90}
+    S3: {enabled: true, weight: 50}
+    S4: {enabled: true, weight: 40}
+    S5: {enabled: true, weight: 30}
+    S6: {enabled: true, weight: 20}
+paths: {standardwise_file: sample-data/sample-standardwise-allotment.xlsx, teacherwise_file: sample-data/sample-teacherwise-allotment.xlsx,
+  class_teachers_file: sample-data/sample-classteacher-list.xlsx, constraints_file: sample-data/sample-constraints.csv,
+  output_dir: output}

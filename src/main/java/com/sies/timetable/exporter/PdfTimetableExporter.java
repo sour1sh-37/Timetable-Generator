@@ -157,7 +157,8 @@ public class PdfTimetableExporter {
             gridTable.addCell(createPeriodHeaderCell(p, period, colHeaderFont, colHeaderSmall));
         }
 
-        PdfPCell recessHeader = new PdfPCell(new Phrase("RECESS", colHeaderFont));
+        String recPdfTime = config.getRecessTiming(Day.MONDAY);
+        PdfPCell recessHeader = new PdfPCell(new Phrase("RECESS" + (recPdfTime.isBlank() ? "" : "\n" + recPdfTime), colHeaderFont));
         recessHeader.setBackgroundColor(GOLD);
         recessHeader.setHorizontalAlignment(Element.ALIGN_CENTER);
         recessHeader.setVerticalAlignment(Element.ALIGN_MIDDLE);
@@ -196,8 +197,14 @@ public class PdfTimetableExporter {
             }
 
             // Recess cell
-            PdfPCell recCell = new PdfPCell(new Phrase("BREAK", recessFont));
-            recCell.setBackgroundColor(RECESS_BG);
+            PdfPCell recCell;
+            if (config.isRecessEnabled(day)) {
+                recCell = new PdfPCell(new Phrase("BREAK", recessFont));
+                recCell.setBackgroundColor(RECESS_BG);
+            } else {
+                recCell = new PdfPCell(new Phrase("—", emptyFont));
+                recCell.setBackgroundColor(rowBg);
+            }
             recCell.setHorizontalAlignment(Element.ALIGN_CENTER);
             recCell.setVerticalAlignment(Element.ALIGN_MIDDLE);
             recCell.setBorderColor(BORDER_COLOR);

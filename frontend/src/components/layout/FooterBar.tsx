@@ -1,47 +1,41 @@
-import React from 'react';
-import { Cpu, Database, Command } from 'lucide-react';
-import type { HealthResponse } from '../../api/types';
+import type { HealthResponse, BackendLifecycleState } from '../../api/types';
 import './layout.css';
 
 export interface FooterBarProps {
   health: HealthResponse | null;
+  lifecycleState?: BackendLifecycleState;
   lastUpdated: Date | null;
 }
 
-export const FooterBar: React.FC<FooterBarProps> = ({ health, lastUpdated }) => {
-  const formatBytes = (bytes?: number) => {
-    if (!bytes) return '0 MB';
-    return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
-  };
+export const FooterBar: React.FC<FooterBarProps> = ({ health, lifecycleState, lastUpdated }) => {
+  const isOnline = Boolean(health?.status === 'UP');
+  const isStarting = lifecycleState === 'STARTING' || lifecycleState === 'RECOVERING';
+  const isStopping = lifecycleState === 'SHUTTING_DOWN';
+
+  const statusLabel = isStarting
+    ? 'Starting Engine...'
+    : isStopping
+    ? 'Stopping Engine...'
+    : isOnline
+    ? 'Scheduling Engine Ready'
+    : 'Engine Offline';
+
+  const dotClass = isStarting || isStopping ? 'is-yellow' : isOnline ? 'is-green' : 'is-red';
 
   return (
-    <footer className="app-footer">
+    <footer className="app-footer" aria-label="Application status footer">
       <div className="app-footer__brand">
-        <span>SIES (Dr APJ Abdul Kalam Memorial) High School • Timetable Generator & Optimizer</span>
+        <span>SIES High School & Junior College • Academic Timetable Management</span>
       </div>
 
       <div className="app-footer__telemetry">
-        {health && (
-          <>
-            <span className="app-footer__item">
-              <Cpu size={12} className="text-terracotta" />
-              <span>PID {health.jvm.pid} ({health.jvm.availableProcessors} Cores)</span>
-            </span>
-            <span className="app-footer__separator">•</span>
-            <span className="app-footer__item">
-              <Database size={12} className="text-gold" />
-              <span>Heap: {formatBytes((health.jvm.totalMemoryBytes - health.jvm.freeMemoryBytes))} / {formatBytes(health.jvm.maxMemoryBytes)}</span>
-            </span>
-            <span className="app-footer__separator">•</span>
-          </>
-        )}
         <span className="app-footer__item">
-          <span>Synced: {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}</span>
+          <span className={`status-pill-dot ${dotClass}`} />
+          <span>{statusLabel}</span>
         </span>
         <span className="app-footer__separator">•</span>
-        <span className="app-footer__item app-footer__shortcuts">
-          <Command size={11} />
-          <span>Tab / Shift+Tab Navigate</span>
+        <span className="app-footer__item">
+          <span>Synced: {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}</span>
         </span>
       </div>
     </footer>

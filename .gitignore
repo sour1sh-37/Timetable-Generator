@@ -48,6 +48,7 @@ src-tauri/gen/schemas/
 src-tauri/resources/
 *.msi
 *-setup.exe
+*.exe
 
 # ==============================================================================
 # Python & Scripts Caches

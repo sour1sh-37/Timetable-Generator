@@ -389,7 +389,8 @@ public class TimetableService {
             String time = period != null ? "\n" + period.getStartTime() + " - " + period.getEndTime() : "";
             headers[p] = "Period " + p + time;
         }
-        headers[defaultRecess + 1] = "RECESS\n09:30 - 09:50";
+        String recHeaderTime = config.getRecessTiming(Day.MONDAY);
+        headers[defaultRecess + 1] = "RECESS" + (recHeaderTime.isBlank() ? "\n09:30 - 09:50" : "\n" + recHeaderTime);
         for (int p = defaultRecess + 1; p <= maxPeriods; p++) {
             Period period = config.getPeriods().get(p);
             String time = period != null ? "\n" + period.getStartTime() + " - " + period.getEndTime() : "";
@@ -424,7 +425,11 @@ public class TimetableService {
                 }
             }
 
-            cells[d][col++] = new TimetableCell("RECESS", "BREAK", "RECESS", true, false, SubjectCategory.OTHER);
+            if (config.isRecessEnabled(day)) {
+                cells[d][col++] = new TimetableCell("RECESS", "BREAK", "RECESS", true, false, SubjectCategory.OTHER);
+            } else {
+                cells[d][col++] = new TimetableCell("---", "NO BREAK", "NO BREAK", false, true, SubjectCategory.OTHER);
+            }
 
             for (int p = defaultRecess + 1; p <= maxPeriods; p++) {
                 if (p <= dailyPeriods) {
@@ -464,7 +469,8 @@ public class TimetableService {
             String time = period != null ? "\n" + period.getStartTime() + " - " + period.getEndTime() : "";
             headers[p] = "Period " + p + time;
         }
-        headers[defaultRecess + 1] = "RECESS\n09:30 - 09:50";
+        String recTeacherHeader = config.getRecessTiming(Day.MONDAY);
+        headers[defaultRecess + 1] = "RECESS" + (recTeacherHeader.isBlank() ? "\n09:30 - 09:50" : "\n" + recTeacherHeader);
         for (int p = defaultRecess + 1; p <= maxPeriods; p++) {
             Period period = config.getPeriods().get(p);
             String time = period != null ? "\n" + period.getStartTime() + " - " + period.getEndTime() : "";
@@ -499,7 +505,11 @@ public class TimetableService {
                 }
             }
 
-            cells[d][col++] = new TimetableCell("RECESS", "BREAK", "RECESS", true, false, SubjectCategory.OTHER);
+            if (config.isRecessEnabled(day)) {
+                cells[d][col++] = new TimetableCell("RECESS", "BREAK", "RECESS", true, false, SubjectCategory.OTHER);
+            } else {
+                cells[d][col++] = new TimetableCell("---", "NO BREAK", "NO BREAK", false, true, SubjectCategory.OTHER);
+            }
 
             for (int p = defaultRecess + 1; p <= maxPeriods; p++) {
                 if (p <= dailyPeriods) {

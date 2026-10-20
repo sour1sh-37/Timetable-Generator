@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Play, RefreshCw, Settings, AlertCircle } from 'lucide-react';
 import { AppShell } from './components/layout/AppShell';
-import type { ActiveNavView } from './components/layout/Sidebar';
-import { ErrorBanner } from './components/common';
+import type { ActiveNavView, SetupTab, RulesTab } from './components/layout/Sidebar';
+import { Button } from './components/common';
 import { CommandCenterView } from './views/CommandCenterView';
-import { TimetableStudioView } from './views/TimetableStudioView';
 import { SchoolSetupView } from './views/SchoolSetupView';
+import { TimetableRulesView } from './views/TimetableRulesView';
+import { GenerateTimetableView } from './views/GenerateTimetableView';
+import { TimetableStudioView } from './views/TimetableStudioView';
 import { SettingsModal } from './views/SettingsModal';
 import { TimetableApiClient, DEFAULT_API_BASE_URL } from './api/client';
 import type {
@@ -12,10 +15,15 @@ import type {
   ConfigResponse,
   WorkspaceDetectResponse,
   ModelPresetResponse,
+  BackendLifecycleState,
 } from './api/types';
 
 export const App: React.FC = () => {
-  const [activeView, setActiveView] = useState<ActiveNavView>('command-center');
+  const [activeView, setActiveView] = useState<ActiveNavView>('home');
+  const [activeSetupTab, setActiveSetupTab] = useState<SetupTab>('structure');
+  const [activeRulesTab, setActiveRulesTab] = useState<RulesTab>('bell');
+  const [hasTimetable, setHasTimetable] = useState<boolean>(false);
+
   const [baseUrl, setBaseUrl] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const globalUrl = (window as unknown as { __SIES_BACKEND_URL__?: string }).__SIES_BACKEND_URL__;
@@ -26,6 +34,8 @@ export const App: React.FC = () => {
     return DEFAULT_API_BASE_URL;
   });
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [lifecycleState, setLifecycleState] = useState<BackendLifecycleState>('ONLINE');
+  const [isLifecycleBusy, setIsLifecycleBusy] = useState<boolean>(false);
 
   // Auto-detect dynamic local port when launched inside Tauri
   useEffect(() => {
@@ -61,6 +71,7 @@ export const App: React.FC = () => {
       // 1. Health & System Telemetry
       const healthData = await client.getHealth();
       setHealth(healthData);
+      setLifecycleState('ONLINE');
 
       // 2. Active Configuration
       try {
@@ -86,11 +97,20 @@ export const App: React.FC = () => {
         console.warn('Failed to load school academic preset:', e);
       }
 
+      // 5. Active Timetable Status
+      try {
+        const summaryData = await client.getScheduleSummary();
+        setHasTimetable(Boolean(summaryData.available));
+      } catch (e) {
+        console.warn('Failed to query schedule summary status:', e);
+      }
+
       setLastUpdated(new Date());
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
       setHealth(null);
+      setLifecycleState('OFFLINE');
     } finally {
       setIsLoading(false);
     }
@@ -125,9 +145,66 @@ export const App: React.FC = () => {
     };
   };
 
+  const handleStartBackend = async () => {
+    setIsLifecycleBusy(true);
+    setLifecycleState('STARTING');
+    setError(null);
+    try {
+      const res = await client.startBackendProcess();
+      setLifecycleState(res.state);
+      if (res.url) {
+        setBaseUrl(res.url);
+      }
+      await loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Could not start scheduling engine: ${msg}`);
+      setLifecycleState('FAILED');
+    } finally {
+      setIsLifecycleBusy(false);
+    }
+  };
+
+  const handleRestartBackend = async () => {
+    setIsLifecycleBusy(true);
+    setLifecycleState('RECOVERING');
+    setError(null);
+    try {
+      const res = await client.restartBackendProcess();
+      setLifecycleState(res.state);
+      if (res.url) {
+        setBaseUrl(res.url);
+      }
+      await loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Could not restart scheduling engine: ${msg}`);
+      setLifecycleState('FAILED');
+    } finally {
+      setIsLifecycleBusy(false);
+    }
+  };
+
   const handleShutdownDaemon = async () => {
-    await client.shutdown();
-    setHealth(null);
+    setIsLifecycleBusy(true);
+    setLifecycleState('SHUTTING_DOWN');
+    try {
+      if (client.isTauriEnvironment()) {
+        const res = await client.shutdownBackendProcess();
+        setLifecycleState(res.state);
+      } else {
+        await client.shutdown();
+        setLifecycleState('OFFLINE');
+      }
+      setHealth(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('Shutdown error:', msg);
+      setLifecycleState('OFFLINE');
+      setHealth(null);
+    } finally {
+      setIsLifecycleBusy(false);
+    }
   };
 
   const [studioTarget, setStudioTarget] = useState<{ viewMode: 'class' | 'teacher'; id: string } | null>(null);
@@ -139,30 +216,150 @@ export const App: React.FC = () => {
     setActiveView('timetable-studio');
   };
 
+  const handleSelectView = (view: ActiveNavView, tab?: SetupTab, rulesTab?: RulesTab) => {
+    setActiveView(view);
+    if (tab) {
+      setActiveSetupTab(tab);
+    }
+    if (rulesTab) {
+      setActiveRulesTab(rulesTab);
+    }
+  };
+
   return (
     <>
       <AppShell
         activeView={activeView}
-        onSelectView={setActiveView}
+        activeSetupTab={activeSetupTab}
+        activeRulesTab={activeRulesTab}
+        onSelectView={handleSelectView}
         health={health}
+        lifecycleState={lifecycleState}
         isLoading={isLoading}
         lastUpdated={lastUpdated}
+        hasTimetable={hasTimetable}
         onRefresh={loadData}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onStartDaemon={handleStartBackend}
       >
-        {error && (
-          <div style={{ marginBottom: '1.25rem' }}>
-            <ErrorBanner
-              title="Java 21 Loopback API Daemon Offline"
-              message={error}
-              details={`Target URL: ${baseUrl}\nVerify that the Java daemon is running:\n  .\\mvnw exec:java -Dexec.args="--server 8080"`}
-              onRetry={loadData}
-            />
+        {(!health || error) && (
+          <div
+            className="engine-offline-card"
+            style={{
+              marginBottom: '1.25rem',
+              padding: '1.25rem 1.5rem',
+              background: 'var(--color-surface, #ffffff)',
+              border: '1px solid var(--color-border-warning, #f59e0b)',
+              borderLeft: '5px solid var(--color-warning, #d97706)',
+              borderRadius: 'var(--radius-md, 8px)',
+              boxShadow: 'var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.08))',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '1rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                <div
+                  style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '50%',
+                    background: 'rgba(217, 119, 6, 0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--color-warning, #d97706)',
+                    flexShrink: 0,
+                  }}
+                >
+                  <AlertCircle size={22} />
+                </div>
+                <div>
+                  <h4
+                    style={{
+                      margin: 0,
+                      fontSize: '1rem',
+                      fontWeight: 600,
+                      color: 'var(--color-text-primary, #1e293b)',
+                    }}
+                  >
+                    {lifecycleState === 'STARTING' || lifecycleState === 'RECOVERING'
+                      ? 'Scheduling Engine Starting...'
+                      : 'Scheduling Engine Offline'}
+                  </h4>
+                  <p
+                    style={{
+                      margin: '0.2rem 0 0',
+                      fontSize: '0.85rem',
+                      color: 'var(--color-text-secondary, #64748b)',
+                    }}
+                  >
+                    {lifecycleState === 'STARTING' || lifecycleState === 'RECOVERING'
+                      ? 'Initializing timetable optimization engine and establishing local connection...'
+                      : 'The timetable calculation service is currently paused. Start the engine to generate schedules, edit allocations, or inspect conflicts.'}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Play size={14} />}
+                  isLoading={isLifecycleBusy || lifecycleState === 'STARTING'}
+                  onClick={handleStartBackend}
+                >
+                  Start Scheduling Engine
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<RefreshCw size={14} />}
+                  isLoading={isLoading}
+                  onClick={loadData}
+                >
+                  Check Connection
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  leftIcon={<Settings size={14} />}
+                  onClick={() => setIsSettingsOpen(true)}
+                >
+                  Engine Settings
+                </Button>
+              </div>
+            </div>
+
+            {error && (
+              <details style={{ fontSize: '0.78rem', color: 'var(--color-text-tertiary, #94a3b8)', marginTop: '0.5rem' }}>
+                <summary style={{ cursor: 'pointer', userSelect: 'none' }}>Technical Connection Diagnostics</summary>
+                <div
+                  style={{
+                    marginTop: '0.35rem',
+                    fontFamily: 'monospace',
+                    whiteSpace: 'pre-wrap',
+                    background: 'var(--color-surface-subtle, #f8fafc)',
+                    padding: '0.5rem 0.75rem',
+                    borderRadius: '4px',
+                    border: '1px solid var(--color-border-subtle, #e2e8f0)',
+                  }}
+                >
+                  {`Status: ${lifecycleState}\nService Endpoint: ${baseUrl}\nDiagnostic detail: ${error}`}
+                </div>
+              </details>
+            )}
           </div>
         )}
 
-        {/* Persistent View Dispatcher */}
-        {activeView === 'command-center' && (
+        {/* Persistent View Dispatcher (5 Core Destinations) */}
+        {(activeView === 'home' || activeView === 'command-center') && (
           <CommandCenterView
             client={client}
             health={health}
@@ -175,14 +372,38 @@ export const App: React.FC = () => {
             onScanWorkspace={handleScanWorkspace}
             onValidateModel={handleValidateModel}
             onNavigateToStudio={() => handleNavigateToStudio()}
-            onNavigateToSetup={() => setActiveView('school-setup')}
+            onNavigateToSetup={(tab) => handleSelectView('school-setup', tab || 'structure')}
+            onNavigateToRules={(subTab) => handleSelectView('timetable-rules', undefined, subTab || 'bell')}
+            onNavigateToGenerate={() => handleSelectView('generate')}
           />
         )}
 
         {activeView === 'school-setup' && (
           <SchoolSetupView
             client={client}
+            activeTab={activeSetupTab}
+            onTabChange={setActiveSetupTab}
             onNavigateToStudio={() => handleNavigateToStudio()}
+            onNavigateToRules={(subTab) => handleSelectView('timetable-rules', undefined, subTab || 'bell')}
+            onNavigateToGenerate={() => handleSelectView('generate')}
+          />
+        )}
+
+        {activeView === 'timetable-rules' && (
+          <TimetableRulesView
+            client={client}
+            activeSubTab={activeRulesTab}
+            onSubTabChange={setActiveRulesTab}
+            onNavigateToGenerate={() => handleSelectView('generate')}
+          />
+        )}
+
+        {activeView === 'generate' && (
+          <GenerateTimetableView
+            client={client}
+            onNavigateToStudio={() => handleNavigateToStudio()}
+            onNavigateToSetup={(tab) => handleSelectView('school-setup', tab || 'structure')}
+            onNavigateToRules={(subTab) => handleSelectView('timetable-rules', undefined, subTab || 'bell')}
           />
         )}
 
@@ -198,6 +419,10 @@ export const App: React.FC = () => {
         currentBaseUrl={baseUrl}
         onApplyBaseUrl={setBaseUrl}
         health={health}
+        lifecycleState={lifecycleState}
+        isLifecycleBusy={isLifecycleBusy}
+        onStartDaemon={handleStartBackend}
+        onRestartDaemon={handleRestartBackend}
         onShutdownDaemon={handleShutdownDaemon}
       />
     </>
